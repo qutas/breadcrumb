@@ -1,0 +1,42 @@
+# Common configuration for Breadcrumb guidance system
+
+
+# System Limits
+system:
+  land_x: 0.0  # Landing location (X m)
+  land_y: 0.0  # Landing location (Y m)
+  land_z: 0.35  # Landing cut-off height (Z m)
+  home_x: 0.0
+  home_y: 0.0
+  home_z: 0.5
+  takeoff_h: 0.5
+
+# Horizontal Position Controller
+xy_pid:
+#  p: 0.4
+#  i: 0.0
+#  d: 0.005
+  p: 0.4
+  i: 0.0
+  d: 0.0
+  min: -0.5
+  max: 0.5
+
+# Vertical Position Controller
+z_pid:
+#  p: 0.4
+#  i: 0.0
+#  d: 0.05
+  p: 0.4
+  i: 0.0
+  d: 0.0
+  min: -1.0
+  max: 1.0
+
+# Heading Position Controller
+h_pid:
+  p: 0.5
+  i: 0.0
+  d: 0.2
+  min: -1.0
+  max: 1.0
