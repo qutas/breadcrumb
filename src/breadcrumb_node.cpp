@@ -114,6 +114,8 @@ int main(int argc, char **argv)
 
 	mavros_msgs::CommandBool arm_cmd;
 	arm_cmd.request.value = true;
+	mavros_msgs::CommandBool disarm_cmd;
+	disarm_cmd.request.value = false;
 
 	ros::Time lastRequest = ros::Time(0);
 
@@ -249,13 +251,6 @@ int main(int argc, char **argv)
 
 	//TODO: Load specified waypoint file if one is set
 
-	/*
-	pid vel_x_pid(0.4, 0.1, 0.005, 1.0/NAV_RATE, -0.5, 0.5);
-	pid vel_y_pid(0.4, 0.1, 0.005, 1.0/NAV_RATE, -0.5, 0.5);
-	pid vel_z_pid(1.0, 0.15, 0.0, 1.0/NAV_RATE, -1.0, 1.0);
-	pid vel_h_pid(0.5, 0.0, 0.2, 1.0/NAV_RATE, -1.0, 1.0);
-	*/
-
 	geometry_msgs::Pose waypointFiller;
 	waypointFiller.position.x = 1;
 	waypointFiller.position.z = 1;
@@ -271,19 +266,7 @@ int main(int argc, char **argv)
 	waypointFiller.position.y = 0;
 	waypointList.push_back(waypointFiller);
 
-	int waypointCounter = 0;
-
-	/*
-	//send a few setpoints before starting
-	ROS_INFO("Initializing pose stream...");
-	for(int i = 100; ros::ok() && i > 0; --i){
-		pose.header.stamp = ros::Time::now();
-		local_pos_pub.publish(pose);
-		ros::spinOnce();
-		rate.sleep();
-	}
-	ROS_INFO("Done!");
-	*/
+	int waypointCounter = -1;
 
 
 	//================================//
@@ -358,6 +341,7 @@ int main(int argc, char **argv)
 
 								//Set the current goal to hold position until the handover is complete (in case this is mid flight)
 								currentGoal = currentPose;
+								floorHeight = currentPose.position.z;
 
 								geometry_msgs::Vector3 rot = toEuler( currentGoal.orientation );
 								rot.x = 0;
@@ -423,7 +407,8 @@ int main(int argc, char **argv)
 
 				break;
 			case NAV_MODE_MISSION:
-				if(waypointCounter == 0) {
+				if(waypointCounter == -1) {
+					waypointCounter = 0;
 					currentGoal = waypointList.at(waypointCounter);
 					ROS_INFO("Beginning waypoint mission: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
 				}
@@ -436,6 +421,7 @@ int main(int argc, char **argv)
 						ROS_INFO("Heading to next waypoint: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
 					} else {
 						ROS_INFO("All waypoints have been reached...");
+						waypointCounter = -1;
 						navCurrentMode = NAV_MODE_HOME;
 					}
 				}
@@ -452,17 +438,32 @@ int main(int argc, char **argv)
 				currentGoal = navGoalHome;
 
 				if( comparePose( currentGoal, currentPose ) )
-					navCurrentMode = NAV_MODE_SLEEP;
+					navCurrentMode = NAV_MODE_LAND;
 
 				break;
 			case NAV_MODE_LAND:
 				//TODO: Should check the current position to know when to cut velocity, or to disarm when on the ground.
 
+				currentGoal = currentPose;
+				currentGoal.position.z = floorHeight;
+				ROS_INFO("Commanding the mav to land: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
+
+				if( comparePose( currentGoal, currentPose ) ) {
+					ROS_INFO( "Reached landing goal!" );
+					ROS_WARN( "Attempting to disarm mav" );
+
+					//if( arming_client.call(disarm_cmd) && disarm_cmd.response.success ) {
+					//	ROS_INFO("Mav disarmed");
+					//}
+
+					navCurrentMode = NAV_MODE_SLEEP;
+				}
+				/*
 				if( set_mode_client.call(setModeLand) && setModeLand.response.success) {
 					ROS_WARN( "Breadcrumb: Halting operation, landing imidiately");
 				} else {
 					ROS_ERROR( "Cannot enter landing mode, mav may be of control!" );
-				}
+				} */
 
 				//terminate = true;
 

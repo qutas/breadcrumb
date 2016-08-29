@@ -65,6 +65,7 @@ geometry_msgs::PoseStamped outputPose;	//Should have a default of 0 for all velo
 double navGoalTakeoffHeight = 1;
 double waypointRadius = 0.1;
 double headingAccuracy = 0.1;
+double floorHeight = 0.0;
 std::vector<geometry_msgs::Pose> waypointList;
 
 /*
