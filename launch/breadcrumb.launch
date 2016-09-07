@@ -1,15 +1,19 @@
 <launch>
 	<node pkg="breadcrumb" type="breadcrumb_node" name="breadcrumb" clear_params="true" output="screen">
-		<!-- Connection Parameters /-->
+		<!-- Connection Parameters -->
 		<param name="position_input" value="/mavros/local_position/pose" type="str"/>
-		<param name="velocity_command" value="/mavros/setpoint_velocity/cmd_vel" type="str"/>
+
+		<param name="position_goal" value="mavros/setpoint_position/pose" type="str" />
+		<!--param name="velocity_goal" value="/mavros/setpoint_velocity/cmd_vel" type="str" /-->
+		<!--param name="acceleration_goal" value="/mavros/setpoint_accel/accel" type="str" /-->
 
 		<!-- Waypoint List /-->
-		<!--param name="waypoints" value="waypoint_list.txt" type="str" /-->
+		<!--param name="waypoints" value="waypoint_list.txt" type="str"/-->
+		<param name="reached_goal" value="goal/reached" type="str"/>
 
-		<!-- Output Parameters /-->
-		<!-- param name="quiet" value="0" type="bool"/-->
-		<!-- param name="verbose" value="1" type="bool"/-->
+		<!-- Output Parameters -->
+		<!--param name="quiet" value="0" type="bool"/-->
+		<!--param name="verbose" value="1" type="bool"/-->
 
 		<!-- Controller Parameters /-->
 		<rosparam command="load" file="$(find breadcrumb)/launch/tuning_config.yaml"/>

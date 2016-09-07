@@ -3,19 +3,23 @@
 
 #include <ros/ros.h>
 
-#include <tf/transform_broadcaster.h>
-#include <tf/transform_listener.h>
-#include <tf/transform_datatypes.h>
+//#include <tf/transform_broadcaster.h>
+//#include <tf/transform_listener.h>
+//#include <tf/transform_datatypes.h>
+
+#include <std_msgs/Empty.h>
 
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Vector3Stamped.h>
 #include <geometry_msgs/Vector3.h>
 
 #include <mavros_msgs/CommandBool.h>
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
+//#include <mavros_msgs/PositionTarget.h>
 
 #include <string.h>
 #include <math.h>
@@ -44,6 +48,20 @@ enum navModes {
 	NAV_MODE_HALT			// Stop breadcrumb, but leave the UAV in a pre-set mode (Loiter if not specified)
 };
 
+//Mission control
+	//somehow receive the mission (probably a service
+	//could use actionlib to provide mission feedback
+	//proper implamentation would cause a sharp difference between this and external
+//Mixed mission
+	//missions are passed over rostopic
+	//each time the message is received, the missions is refreshed)
+	//no need for external as this could be acheived by sending just one waypoint at a time
+	//could still have start, stop, and pause control via services
+	//could make a relatively simple actionlib interface on top of this as a seperate node
+	//use the poseArray message, as that's a relatively standard and controlled format
+//Pure external
+	//only accept the current goal over rostopic
+
 
 
 //================================//
@@ -53,13 +71,20 @@ enum navModes {
 unsigned int navCurrentMode;
 
 mavros_msgs::State currentState;
+//mavros_msgs::PositionTarget outputTarget;
 
-geometry_msgs::Pose currentPose;
+//geometry_msgs::PoseStamped outputTwist;
+geometry_msgs::Vector3Stamped outputAcceleration;
+geometry_msgs::TwistStamped outputVelocity;
+geometry_msgs::PoseStamped outputPosition;
+
+geometry_msgs::PoseStamped currentPose;
+geometry_msgs::Twist currentVelocity;
 geometry_msgs::Pose navGoalHome;
 geometry_msgs::Pose navGoalTakeoff;
 geometry_msgs::Pose currentGoal;
 
-geometry_msgs::TwistStamped outputTwist;	//Should have a default of 0 for all velocities
+//geometry_msgs::TwistStamped outputTwist;	//Should have a default of 0 for all velocities
 geometry_msgs::PoseStamped outputPose;	//Should have a default of 0 for all velocities
 
 double navGoalTakeoffHeight = 1;

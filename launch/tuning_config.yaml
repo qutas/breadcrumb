@@ -12,31 +12,50 @@ system:
   takeoff_h: 0.5
 
 # Horizontal Position Controller
-xy_pid:
-#  p: 0.4
-#  i: 0.0
-#  d: 0.005
-  p: 0.4
+pos_xy_pid:
+  p: 1.0
   i: 0.0
+  d: 0.0
+  min: -1.0
+  max: 1.0
+
+# Vertical Position Controller
+pos_z_pid:
+  p: 1.0
+  i: 0.0
+  d: 0.0
+  min: -0.5
+  max: 1.0
+
+# Horizontal Velocity Controller
+vel_xy_pid:
+  p: 0.2
+  i: 0.1
+  d: 0.005
+  min: -0.1
+  max: 0.1
+
+# Vertical Velocity Controller
+vel_z_pid:
+  p: 0.1
+  i: 0.15
   d: 0.0
   min: -0.5
   max: 0.5
 
-# Vertical Position Controller
-z_pid:
-#  p: 0.4
-#  i: 0.0
-#  d: 0.05
-  p: 0.4
+# Heading Rate Controller
+pos_h_pid:
+  p: 2.0
   i: 0.0
   d: 0.0
-  min: -1.0
-  max: 1.0
+  min: -1.57
+  max: 1.57
 
-# Heading Position Controller
-h_pid:
-  p: 0.5
-  i: 0.0
-  d: 0.2
-  min: -1.0
-  max: 1.0
+
+#	P		I		D		Max		Output
+#	0.4		0.0		0.0		10.0	//XY Position
+#	1.0		0.0		0.0		10.0	//Z Position
+
+#	0.2		0.2		0.005	0.5		//XY Vel
+#	0.4		0.0		2.0		1.0		//Z Vel
+
