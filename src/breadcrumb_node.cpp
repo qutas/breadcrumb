@@ -16,13 +16,22 @@ void state_cb(const mavros_msgs::State::ConstPtr& msg) {
 	currentState = *msg;
 }
 
-void local_pos_cb(const geometry_msgs::PoseStamped msg) {
-	double dt = (msg.header.stamp - currentPose.header.stamp).toSec();
-	currentVelocity.linear.x = (msg.pose.position.x - currentPose.pose.position.x) / dt;
-	currentVelocity.linear.y = (msg.pose.position.y - currentPose.pose.position.y) / dt;
-	currentVelocity.linear.z = (msg.pose.position.z - currentPose.pose.position.z) / dt;
+void local_pos_cb(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+	double dt = (msg->header.stamp - currentPose.header.stamp).toSec();
+	currentVelocity.linear.x = (msg->pose.position.x - currentPose.pose.position.x) / dt;
+	currentVelocity.linear.y = (msg->pose.position.y - currentPose.pose.position.y) / dt;
+	currentVelocity.linear.z = (msg->pose.position.z - currentPose.pose.position.z) / dt;
 
-	currentPose = msg;
+	currentPose = *msg;
+}
+
+void waypoint_cb(const geometry_msgs::PoseArray::ConstPtr& msg) {
+	ROS_INFO("Received new waypoint list...");
+
+	waypointList = msg->poses;
+	waypointCounter = -1;
+
+	ROS_INFO("Loaded in %i waypoints.", waypointList.size());
 }
 
 geometry_msgs::Vector3 toEuler(geometry_msgs::Quaternion q) {
@@ -95,10 +104,15 @@ int main(int argc, char **argv)
 	//TODO: Set a fallback mode for HALT
 
 	//==== Topics ====//
-	std::string positionInput = "position_reference";
+	std::string positionInput = "reference/pose";
+	std::string waypointInput = "reference/wapoints";
+
 	std::string positionOutputTopic = "goal/position_target";
 	std::string velocityOutputTopic = "goal/velocity_target";
 	std::string accelerationOutputTopic = "goal/acceleration_target";
+
+	std::string waypointConfirm = "goal/waypoint_complete";
+	std::string missionConfirm = "goal/mission_complete";
 
 	bool sendVelocity = true;
 	bool sendAcceleration = true;
@@ -141,6 +155,8 @@ int main(int argc, char **argv)
 
 	ros::Time lastRequest = ros::Time(0);
 
+	const std_msgs::Empty outputConfirm;
+
 	//==== Logic Operators ====//
 	//bool changedNavMode = true;
 	navCurrentMode = NAV_MODE_PRECONNECT;
@@ -148,6 +164,7 @@ int main(int argc, char **argv)
 	bool startSystem = true;	//Set by a service to start breadcrumb
 	bool sendMovement = false;	//Should be set to false when the UAV should not be moving
 	bool terminate = false;
+	bool changedMode = false;	//Should be set on each mode change to allow gracefull passover
 
 	//the setpoint publishing rate MUST be faster than 2Hz
 	ros::Rate rate(NAV_RATE);
@@ -174,7 +191,22 @@ int main(int argc, char **argv)
 	if( !nh.getParam( "position_input", positionInput ) ) {
 		ROS_WARN( "No parameter set for \"position_input\", using: %s", positionInput.c_str() );
 	}
-	ROS_INFO( "Listening to: %s", positionInput.c_str() );
+	ROS_INFO( "Listening for position input: %s", positionInput.c_str() );
+
+	if( !nh.getParam( "waypoint_input", waypointInput ) ) {
+		ROS_WARN( "No parameter set for \"waypoint_input\", using: %s", waypointInput.c_str() );
+	}
+	ROS_INFO( "Listening for waypoint input: %s", waypointInput.c_str() );
+
+	if( !nh.getParam( "reached_goal", waypointConfirm ) ) {
+		ROS_WARN( "No parameter set for \"reached_goal\", using: %s", waypointConfirm.c_str() );
+	}
+	ROS_INFO( "Broadcasting waypoint incremental status: %s", waypointConfirm.c_str() );
+
+	if( !nh.getParam( "mission_goal", missionConfirm ) ) {
+		ROS_WARN( "No parameter set for \"mission_goal\", using: %s", missionConfirm.c_str() );
+	}
+	ROS_INFO( "Broadcasting mission status: %s", missionConfirm.c_str() );
 
 	/*
 	if( !nh.getParam( "velocity_command", velocityOutput) ) {
@@ -341,6 +373,8 @@ int main(int argc, char **argv)
 		( "/mavros/state", 10, state_cb);
 	ros::Subscriber local_pos_sub = nh.subscribe<geometry_msgs::PoseStamped>
 		(positionInput, 10, local_pos_cb);
+	ros::Subscriber waypoint_sub = nh.subscribe<geometry_msgs::PoseArray>
+		(waypointInput, 10, waypoint_cb);
 
 	//Publishers
 	//ros::Publisher vel_pub = nh.advertise<mavros_msgs::PositionTarget>
@@ -351,6 +385,11 @@ int main(int argc, char **argv)
 		(velocityOutputTopic, 10);
 	ros::Publisher pos_pub = nh.advertise<geometry_msgs::PoseStamped>
 		(positionOutputTopic, 10);
+
+	ros::Publisher wp_confirm_pub = nh.advertise<std_msgs::Empty>
+		(waypointConfirm, 1);	//Only really want this to be sent or read once at a time.
+	ros::Publisher mission_confirm_pub = nh.advertise<std_msgs::Empty>
+		(missionConfirm, 1);
 
 	//Services
 	ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>
@@ -383,8 +422,6 @@ int main(int argc, char **argv)
 	waypointList.push_back(waypointFiller);
 	waypointFiller.position.y = 0;
 	waypointList.push_back(waypointFiller);
-
-	int waypointCounter = -1;
 
 
 	//================================//
@@ -427,6 +464,8 @@ int main(int argc, char **argv)
 
 			navCurrentMode = NAV_MODE_PRECONNECT;
 			currentGoal = navGoalHome;
+
+			waypointCounter == -1;
 
 			ROS_ERROR( "The mav has changed to a non-controllable state [MODE: %s, ARMED: %d]", currentState.mode.c_str(), currentState.armed );
 			ROS_WARN( "Resetting goal to [HOME] coordinates: [%0.2f, %0.2f, %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z );
@@ -487,6 +526,7 @@ int main(int argc, char **argv)
 
 						ROS_WARN( "DEBUG MODE SWITCH [TAKEOFF]" );
 						navCurrentMode = NAV_MODE_TAKEOFF; //TODO: Should just not be here
+						changedMode = true;
 					}
 				} else
 					ROS_INFO_THROTTLE(MSG_FREQ, "Breadcrumb is in standby, awaiting activation..." );
@@ -496,30 +536,49 @@ int main(int argc, char **argv)
 				ROS_INFO_THROTTLE(MSG_FREQ, "Breadcrumb is conected, awaiting commands..." );
 				break;
 			case NAV_MODE_MISSION_START:
-				// TODO:
+				//TODO: Should check to see if the mav is flying, if not, add takeoff goal and pass over to mission
 				break;
 			case NAV_MODE_TAKEOFF:
-				if( !sendMovement ) {
-					ROS_INFO( "Activating velocity goal output" );
-					sendMovement = true;
+				if( changedMode ) {
+					ROS_INFO("Attempting to takeoff...");
 
-					navGoalTakeoff = currentPose.pose;
-					navGoalTakeoff.position.z = navGoalTakeoffHeight;
+					if( !sendMovement ) { //If the mav is disabled, enable outputs
+						ROS_INFO( "Activating goal output" );
+						sendMovement = true;
 
-					currentGoal = navGoalTakeoff;
+						navGoalTakeoff = currentPose.pose;
+						navGoalTakeoff.position.z = navGoalTakeoffHeight;
 
-					ROS_INFO( "Commanding the mav to head to [TAKEOFF]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalTakeoff.position.x, navGoalTakeoff.position.y, navGoalTakeoff.position.z, toEuler( navGoalTakeoff.orientation ).z );
+						currentGoal = navGoalTakeoff;
+
+						ROS_INFO( "Commanding the mav to head to [TAKEOFF]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalTakeoff.position.x, navGoalTakeoff.position.y, navGoalTakeoff.position.z, toEuler( navGoalTakeoff.orientation ).z );
+					} else { //Motor commands are active, but the mav might be on the ground?
+						ROS_WARN("The mav is already being controlled (and it seems like it should be flying!");
+						ROS_WARN("Commanding to hold position!");
+						currentGoal = currentPose.pose;
+					}
+
+					changedMode = false;
 				}
 
-				if( comparePose( currentGoal, currentPose.pose ) )
-					navCurrentMode = NAV_MODE_MISSION;
+				if( comparePose( currentGoal, currentPose.pose ) ) {
+					ROS_INFO( "Reached takeoff goal!" );
+					navCurrentMode = NAV_MODE_MISSION;	//TODO: Should be NAV_MODE_SLEEP
+					changedMode = true;
+				}
 
 				break;
 			case NAV_MODE_MISSION:
+				if( changedMode ) {	//Reset the waypoint counter if switching to mission mode
+					waypointCounter = -1;
+					ROS_INFO("Begining waypoint mission...");
+					changedMode = false;
+				}
+
 				if(waypointCounter == -1) {
 					waypointCounter = 0;
 					currentGoal = waypointList.at(waypointCounter);
-					ROS_INFO( "Beginning waypoint mission: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
+					ROS_INFO( "Heading to next waypoint: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
 				}
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
@@ -527,45 +586,60 @@ int main(int argc, char **argv)
 
 					if( waypointCounter < waypointList.size() ) {
 						currentGoal = waypointList.at(waypointCounter);
+
+						wp_confirm_pub.publish( outputConfirm );
+
 						ROS_INFO( "Heading to next waypoint: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
 					} else {
-						ROS_INFO( "All waypoints have been reached..." );
 						waypointCounter = -1;
-						navCurrentMode = NAV_MODE_HOME;
+
+						mission_confirm_pub.publish( outputConfirm );
+
+						navCurrentMode = NAV_MODE_SLEEP;
+						changedMode = true;
+
+						ROS_INFO( "All waypoints have been reached..." );
 					}
 				}
 
 				// TODO: Should have a message to say when a goal was reached
 			case NAV_MODE_PAUSE:
-				// TODO:
-				break;
-			case NAV_MODE_EXTERNAL:
-				// TODO:
+				// TODO: Need to have a remote mode change implemented
 				break;
 			case NAV_MODE_HOME:
-				ROS_INFO( "Commanding the mav to head to [HOME]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( navGoalHome.orientation ).z );
+				if( changedMode ) {
+					changedMode = false;
+					ROS_INFO( "Commanding the mav to head to [HOME]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( navGoalHome.orientation ).z );
+				}
+
 				currentGoal = navGoalHome;
 
-				if( comparePose( currentGoal, currentPose.pose ) )
+				if( comparePose( currentGoal, currentPose.pose ) ) {
+					changedMode = true;
 					navCurrentMode = NAV_MODE_LAND;
+				}
 
 				break;
 			case NAV_MODE_LAND:
 				//TODO: Should check the current position to know when to cut velocity, or to disarm when on the ground.
-
 				currentGoal = currentPose.pose;
 				currentGoal.position.z = floorHeight;
-				ROS_INFO( "Commanding the mav to land: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
+
+				if( changedMode ) {
+					changedMode = false;
+					ROS_INFO( "Commanding the mav to land: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
+				}
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
 					ROS_INFO( "Reached landing goal!" );
 
-					//ROS_WARN( "Attempting to disarm mav" );
-					//if( arming_client.call(disarm_cmd) && disarm_cmd.response.success ) {
-					//	ROS_INFO( "Mav disarmed" );
-					//}
+					ROS_WARN( "Attempting to disarm mav" );
+					if( arming_client.call(disarm_cmd) && disarm_cmd.response.success ) {
+						ROS_INFO( "Mav disarmed" );
+					}
 
 					sendMovement = false;
+					changedMode = true;
 					navCurrentMode = NAV_MODE_SLEEP;
 				}
 				/*
@@ -578,10 +652,8 @@ int main(int argc, char **argv)
 				//terminate = true;
 
 				break;
-			case NAV_MODE_RETURN:
-				// TODO: RTL
-				break;
 			case NAV_MODE_MISSION_END:
+				//TODO: Set a goal of waypoints the same as home, then switch to landing mode
 				break;
 			default:
 				ROS_ERROR( "Breadcrumb: Mode was set to an invalid value [%d]", navCurrentMode);
@@ -625,6 +697,8 @@ int main(int argc, char **argv)
 				outputVelocity.twist.linear.z = pos_z_pid.step(currentGoal.position.z, currentPose.pose.position.z);
 			}
 
+			//TODO: Heading?
+
 			//Acceleration
 			if( sendAcceleration ) {	// Omly bother to calculate if the requested
 				outputAcceleration.vector.x = vel_x_pid.step(outputVelocity.twist.linear.x, currentVelocity.linear.x);
@@ -647,6 +721,7 @@ int main(int argc, char **argv)
 			outputTarget.velocity.z = 0.0;
 			outputTarget.yaw_rate = 0.0;
 			*/
+			//Set zero for everything, just to be safe
 
 			//Zero out position
 			outputPosition.pose = currentPose.pose;
@@ -655,6 +730,7 @@ int main(int argc, char **argv)
 			outputVelocity.twist.linear.x = 0;
 			outputVelocity.twist.linear.y = 0;
 			outputVelocity.twist.linear.z = 0;
+			outputVelocity.twist.angular.z = 0;
 
 			//Zero out acceleration
 			outputAcceleration.vector.x = 0.0;

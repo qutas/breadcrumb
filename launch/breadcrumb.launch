@@ -3,13 +3,14 @@
 		<!-- Connection Parameters -->
 		<param name="position_input" value="/mavros/local_position/pose" type="str"/>
 
-		<param name="position_goal" value="mavros/setpoint_position/pose" type="str" />
+		<param name="position_goal" value="/mavros/setpoint_position/local" type="str" />
 		<!--param name="velocity_goal" value="/mavros/setpoint_velocity/cmd_vel" type="str" /-->
 		<!--param name="acceleration_goal" value="/mavros/setpoint_accel/accel" type="str" /-->
 
 		<!-- Waypoint List /-->
-		<!--param name="waypoints" value="waypoint_list.txt" type="str"/-->
+		<!--param name="waypoint_input" value="reference/waypoints" type="str"/-->
 		<param name="reached_goal" value="goal/reached" type="str"/>
+		<param name="mission_goal" value="goal/completed" type="str"/>
 
 		<!-- Output Parameters -->
 		<!--param name="quiet" value="0" type="bool"/-->

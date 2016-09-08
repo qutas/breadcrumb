@@ -11,6 +11,7 @@
 
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Vector3Stamped.h>
@@ -40,10 +41,8 @@ enum navModes {
 	NAV_MODE_TAKEOFF,		// Set the current goal straight above the mav at takeoff height, then fly to home
 	NAV_MODE_MISSION,		// Follow waypoint mission
 	NAV_MODE_PAUSE,			// Waypoints are put on hold to stay at current location (could modify waypoints here)
-	NAV_MODE_EXTERNAL,		// Pass over to an external navigator (tf input?)
 	NAV_MODE_HOME,			// Returns to a defined home location
 	NAV_MODE_LAND,			// Land at current position (then rely on the auto disarm)
-	NAV_MODE_RETURN,			// Land at current position (then rely on the auto disarm)
 	NAV_MODE_MISSION_END,	// Return to the home position and land (then rely on the auto disarm)
 	NAV_MODE_HALT			// Stop breadcrumb, but leave the UAV in a pre-set mode (Loiter if not specified)
 };
@@ -92,6 +91,7 @@ double waypointRadius = 0.1;
 double headingAccuracy = 0.1;
 double floorHeight = 0.0;
 std::vector<geometry_msgs::Pose> waypointList;
+int waypointCounter = -1;
 
 /*
 Services:
