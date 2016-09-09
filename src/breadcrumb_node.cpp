@@ -179,7 +179,7 @@ int main(int argc, char **argv)
 	bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 	bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 
-	ROS_INFO("//======== System Parameters ========//");
+	ROS_INFO("[System Parameters]");
 
 	if( !nh.getParam( "system/state_timeout", stateTimeout ) ) {
 		ROS_WARN( "No parameter set for \"system/state_timeout\", using: %0.2f", stateTimeout );
@@ -219,7 +219,7 @@ int main(int argc, char **argv)
 	//================================//
 
 	//Input/Output //================================================================
-	ROS_INFO("//======== Input & Output Topics ========//");
+	ROS_INFO("[Input & Output Topics]");
 
 	if( !nh.getParam( "position_input", positionInput ) ) {
 		ROS_WARN( "No parameter set for \"position_input\", using: %s", positionInput.c_str() );
@@ -263,7 +263,7 @@ int main(int argc, char **argv)
 
 
 	if( sendVelocity || sendAcceleration ) {
-		ROS_INFO("//======== Position Controller ========//");
+		ROS_INFO("[Position Controller]");
 
 		//POS XY PID //================================================================
 		if( !nh.getParam( "pos_xy_pid/p", pos_x_pid.Kp) ) {
@@ -342,7 +342,7 @@ int main(int argc, char **argv)
 	}
 
 	if( sendAcceleration ) {
-		ROS_INFO("//======== Velocity Controller ========//");
+		ROS_INFO("[Velocity Controller]");
 		//VEL XY PID //================================================================
 		if( !nh.getParam( "vel_xy_pid/p", vel_x_pid.Kp) ) {
 			ROS_WARN( "No parameter set for \"vel_xy_pid/p\", using: %0.2f", vel_x_pid.Kp);
@@ -396,7 +396,7 @@ int main(int argc, char **argv)
 		ROS_INFO( "Setting vel_z_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", vel_z_pid.Kp, vel_z_pid.Ki, vel_z_pid.Kd, vel_z_pid.min_output, vel_z_pid.max_output);
 	}
 
-	ROS_INFO("//======== Flight Parameters ========//");
+	ROS_INFO("[Flight Parameters]");
 
 	//TODO:
 		//double waypointRadius = 0.1;
@@ -436,7 +436,7 @@ int main(int argc, char **argv)
 	ROS_INFO( "Setting takeoff height goal to: %0.2f", navGoalTakeoffHeight );
 
 
-	ROS_INFO("//======== Finished Loading Parameters ========//");
+	ROS_INFO("[Finished Loading Parameters]");
 
 	//Subscribers
 	ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
