@@ -1,21 +1,29 @@
 # Common configuration for Breadcrumb guidance system
 
 
-# System Limits
+# System Settings
 system:
-  land_x: 0.0  # Landing location (X m)
-  land_y: 0.0  # Landing location (Y m)
-  land_z: 0.35  # Landing cut-off height (Z m)
+  #How fast for the control loop to operate at
+  nav_rate: 25.0
+  #Timeout for the contact with the mav in seconds
+  state_timeout: 5.0
+  pos_timeout: 0.2
+
+# Flight Presets
+guidance:
+  #Home should be in the air, most likely above landing
   home_x: 0.0
   home_y: 0.0
-  home_z: 0.5
-  takeoff_h: 0.5
+  home_z: 1.0
+  home_h: 0.0
+  #Takeoff Height will be were the UAV rises to on takeoff
+  takeoff_height: 1.0
 
 # Horizontal Position Controller
 pos_xy_pid:
-  p: 1.0
+  p: 0.6
   i: 0.0
-  d: 0.0
+  d: 0.4
   min: -1.0
   max: 1.0
 
@@ -44,10 +52,10 @@ vel_z_pid:
   max: 0.5
 
 # Heading Rate Controller
-pos_h_pid:
-  p: 2.0
+h_pid:
+  p: 0.5
   i: 0.0
-  d: 0.0
+  d: 0.05
   min: -1.57
   max: 1.57
 

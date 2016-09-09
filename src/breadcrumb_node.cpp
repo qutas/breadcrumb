@@ -133,6 +133,13 @@ int main(int argc, char **argv)
 	outputTarget.type_mask += outputTarget.IGNORE_YAW;
 	*/
 
+	//==== System Settings ====//
+	double navRate = 25.0;
+	double stateTimeout = 5.0;
+	double posTimeout = 1.0;
+	long stateCounter = 0;;
+	long posCounter = 0;
+
 	//==== MavROS Interface ====//
 
 	std::string triggerMode = "POSCTL";
@@ -144,6 +151,7 @@ int main(int argc, char **argv)
 	mavros_msgs::SetMode setModeLand;
 	setModeLand.request.custom_mode = "AUTO.LAND";
 	//TODO: Put this into a parameter
+	//TODO: Should autoland even be used?
 
 	mavros_msgs::SetMode setModeLoiter;
 	setModeLoiter.request.custom_mode = passbackMode;
@@ -157,37 +165,62 @@ int main(int argc, char **argv)
 
 	const std_msgs::Empty outputConfirm;
 
+	double navGoalTakeoffHeight = 1.0;
+
 	//==== Logic Operators ====//
 	//bool changedNavMode = true;
 	navCurrentMode = NAV_MODE_PRECONNECT;
 	bool systemOperational = false;	//Status to see if breadcrumb should be in control
 	bool startSystem = true;	//Set by a service to start breadcrumb
+	bool homeSet = false;		//Used to track if the user has manually set a home location
 	bool sendMovement = false;	//Should be set to false when the UAV should not be moving
 	bool terminate = false;
 	bool changedMode = false;	//Should be set on each mode change to allow gracefull passover
+	bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
+	bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
+
+	ROS_INFO("//======== System Parameters ========//");
+
+	if( !nh.getParam( "system/state_timeout", stateTimeout ) ) {
+		ROS_WARN( "No parameter set for \"system/state_timeout\", using: %0.2f", stateTimeout );
+	}
+	ROS_INFO( "Setting state message timeout to: %0.2f", stateTimeout );
+
+	if( !nh.getParam( "system/pos_timeout", posTimeout ) ) {
+		ROS_WARN( "No parameter set for \"system/pos_timeout\", using: %0.2f", posTimeout );
+	}
+	ROS_INFO( "Setting position input timeout to: %0.2f", posTimeout );
+
+	if( !nh.getParam( "system/nav_rate", navRate ) ) {
+		ROS_WARN( "No parameter set for \"system/nav_rate\", using: %0.2f", navRate );
+	}
+	ROS_INFO( "Setting control loop rate to: %0.2f", navRate );
 
 	//the setpoint publishing rate MUST be faster than 2Hz
-	ros::Rate rate(NAV_RATE);
+	ros::Rate rate(navRate);
 
 	//==== PID Controllers ====//
-	pid pos_x_pid(1.0/NAV_RATE);
-	pid pos_y_pid(1.0/NAV_RATE);
-	pid pos_z_pid(1.0/NAV_RATE);
+	pid pos_x_pid(1.0/navRate);
+	pid pos_y_pid(1.0/navRate);
+	pid pos_z_pid(1.0/navRate);
 
-	pid vel_x_pid(1.0/NAV_RATE);
-	pid vel_y_pid(1.0/NAV_RATE);
-	pid vel_z_pid(1.0/NAV_RATE);
+	pid vel_x_pid(1.0/navRate);
+	pid vel_y_pid(1.0/navRate);
+	pid vel_z_pid(1.0/navRate);
 
-	pid acc_x_pid(1.0/NAV_RATE);
-	pid acc_y_pid(1.0/NAV_RATE);
-	pid acc_z_pid(1.0/NAV_RATE);
-	//pid vel_h_pid(1.0/NAV_RATE);
+	pid ang_h_pid(1.0/navRate);
+
+	//pid acc_x_pid(1.0/navRate);
+	//pid acc_y_pid(1.0/navRate);
+	//pid acc_z_pid(1.0/navRate);
 
 	//================================//
 	// Load Parameters                //
 	//================================//
 
 	//Input/Output //================================================================
+	ROS_INFO("//======== Input & Output Topics ========//");
+
 	if( !nh.getParam( "position_input", positionInput ) ) {
 		ROS_WARN( "No parameter set for \"position_input\", using: %s", positionInput.c_str() );
 	}
@@ -207,13 +240,6 @@ int main(int argc, char **argv)
 		ROS_WARN( "No parameter set for \"mission_goal\", using: %s", missionConfirm.c_str() );
 	}
 	ROS_INFO( "Broadcasting mission status: %s", missionConfirm.c_str() );
-
-	/*
-	if( !nh.getParam( "velocity_command", velocityOutput) ) {
-		ROS_WARN( "No parameter set for \"velocity_command\", using: %s", velocityOutput.c_str() );
-	}
-	ROS_INFO( "Sending commands to: %s", velocityOutput.c_str() );
-	*/
 
 	if( !nh.getParam( "position_goal", positionOutputTopic ) ) {	//We don't disable this so there we always have the "goal waypoint"
 		ROS_WARN( "No parameter set for \"position_goal\", using: %s", positionOutputTopic.c_str() );
@@ -235,7 +261,10 @@ int main(int argc, char **argv)
 		ROS_INFO( "Sending acceleration commands to: %s", accelerationOutputTopic.c_str() );
 	}
 
+
 	if( sendVelocity || sendAcceleration ) {
+		ROS_INFO("//======== Position Controller ========//");
+
 		//POS XY PID //================================================================
 		if( !nh.getParam( "pos_xy_pid/p", pos_x_pid.Kp) ) {
 			ROS_WARN( "No parameter set for \"pos_xy_pid/p\", using: %0.2f", pos_x_pid.Kp);
@@ -287,9 +316,33 @@ int main(int argc, char **argv)
 		}
 
 		ROS_INFO( "Setting pos_z_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", pos_z_pid.Kp, pos_z_pid.Ki, pos_z_pid.Kd, pos_z_pid.min_output, pos_z_pid.max_output);
+
+		//H PID //================================================================
+		if( !nh.getParam( "h_pid/p", ang_h_pid.Kp) ) {
+			ROS_WARN( "No parameter set for \"h_pid/p\", using: %0.2f", ang_h_pid.Kp);
+		}
+
+		if( !nh.getParam( "h_pid/i", ang_h_pid.Ki) ) {
+			ROS_WARN( "No parameter set for \"h_pid/i\", using: %0.2f", ang_h_pid.Ki);
+		}
+
+		if( !nh.getParam( "h_pid/d", ang_h_pid.Kd) ) {
+			ROS_WARN( "No parameter set for \"h_pid/d\", using: %0.2f", ang_h_pid.Kd);
+		}
+
+		if( !nh.getParam( "h_pid/min", ang_h_pid.min_output) ) {
+			ROS_WARN( "No parameter set for \"h_pid/min\", using: %0.2f", ang_h_pid.min_output);
+		}
+
+		if( !nh.getParam( "h_pid/max", ang_h_pid.max_output) ) {
+			ROS_WARN( "No parameter set for \"h_pid/max\", using: %0.2f", ang_h_pid.max_output);
+		}
+
+		ROS_INFO( "Setting h_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", ang_h_pid.Kp, ang_h_pid.Ki, ang_h_pid.Kd, ang_h_pid.min_output, ang_h_pid.max_output);
 	}
 
 	if( sendAcceleration ) {
+		ROS_INFO("//======== Velocity Controller ========//");
 		//VEL XY PID //================================================================
 		if( !nh.getParam( "vel_xy_pid/p", vel_x_pid.Kp) ) {
 			ROS_WARN( "No parameter set for \"vel_xy_pid/p\", using: %0.2f", vel_x_pid.Kp);
@@ -319,7 +372,7 @@ int main(int argc, char **argv)
 
 		ROS_INFO( "Setting vel_xy_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", vel_x_pid.Kp, vel_x_pid.Ki, vel_x_pid.Kd, vel_x_pid.min_output, vel_x_pid.max_output);
 
-		//POS Z PID //================================================================
+		//VEL Z PID //================================================================
 		if( !nh.getParam( "vel_z_pid/p", vel_z_pid.Kp) ) {
 			ROS_WARN( "No parameter set for \"vel_z_pid/p\", using: %0.2f", vel_z_pid.Kp);
 		}
@@ -343,30 +396,47 @@ int main(int argc, char **argv)
 		ROS_INFO( "Setting vel_z_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", vel_z_pid.Kp, vel_z_pid.Ki, vel_z_pid.Kd, vel_z_pid.min_output, vel_z_pid.max_output);
 	}
 
-	/*
-	//H PID //================================================================
-	if( !nh.getParam( "h_pid/p", vel_h_pid.Kp) ) {
-		ROS_WARN( "No parameter set for \"h_pid/p\", using: %0.2f", vel_h_pid.Kp);
+	ROS_INFO("//======== Flight Parameters ========//");
+
+	//TODO:
+		//double waypointRadius = 0.1;
+		//double headingAccuracy = 0.1;
+		//double floorHeight = 0.0;
+
+	bool homeSetX = false;
+	bool homeSetY = false;
+	bool homeSetZ = false;
+	bool homeSetH = false;
+	geometry_msgs::Vector3 tempHome;
+	double tempHomeHdg = 0.0;
+
+	homeSetX = nh.getParam( "guidance/home_x", tempHome.x );
+	homeSetY = nh.getParam( "guidance/home_y", tempHome.y );
+	homeSetZ = nh.getParam( "guidance/home_z", tempHome.z );
+
+	if( homeSetX && homeSetY && homeSetZ ) {
+		homeSet = true;
+
+		navGoalHome.position.x = tempHome.x;
+		navGoalHome.position.y = tempHome.y;
+		navGoalHome.position.z = tempHome.z;
+
+		geometry_msgs::Vector3 rot;
+		nh.getParam( "guidance/home_h", rot.z );
+		navGoalHome.orientation = toQuaternion( rot );
+
+		ROS_INFO( "Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( currentGoal.orientation ).z );
+	} else {
+		ROS_WARN( "No [HOME] set, will by dynamically set when mav is connected" );
 	}
 
-	if( !nh.getParam( "h_pid/i", vel_h_pid.Ki) ) {
-		ROS_WARN( "No parameter set for \"h_pid/i\", using: %0.2f", vel_h_pid.Ki);
+	if( !nh.getParam( "guidance/takeoff_height", navGoalTakeoffHeight ) ) {
+		ROS_WARN( "No parameter set for \"guidance/takeoff_height\", using: %0.2f", navGoalTakeoffHeight );
 	}
+	ROS_INFO( "Setting takeoff height goal to: %0.2f", navGoalTakeoffHeight );
 
-	if( !nh.getParam( "h_pid/d", vel_h_pid.Kd) ) {
-		ROS_WARN( "No parameter set for \"h_pid/d\", using: %0.2f", vel_h_pid.Kd);
-	}
 
-	if( !nh.getParam( "h_pid/min", vel_h_pid.min_output) ) {
-		ROS_WARN( "No parameter set for \"h_pid/min\", using: %0.2f", vel_h_pid.min_output);
-	}
-
-	if( !nh.getParam( "h_pid/max", vel_h_pid.max_output) ) {
-		ROS_WARN( "No parameter set for \"h_pid/max\", using: %0.2f", vel_h_pid.max_output);
-	}
-
-	ROS_INFO( "Setting h_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", vel_h_pid.Kp, vel_h_pid.Ki, vel_h_pid.Kd, vel_h_pid.min_output, vel_h_pid.max_output);
-	*/
+	ROS_INFO("//======== Finished Loading Parameters ========//");
 
 	//Subscribers
 	ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
@@ -402,7 +472,7 @@ int main(int argc, char **argv)
 	// Load Waypoints                 //
 	//================================//
 
-	//TODO: Load specified waypoint file if one is set
+	//TODO: Remove this and test out the callback method
 
 	geometry_msgs::Vector3 wp_heading;
 	wp_heading.z = 1.57;
@@ -429,9 +499,31 @@ int main(int argc, char **argv)
 	//================================//
 
 	// Wait for FCU connection
-    while(ros::ok() && ( !currentState.connected || ( currentPose.header.seq == 0) ) ) {
-		ROS_INFO_THROTTLE( MSG_FREQ, "Breadcrumb is waiting for connection to mav..." );
+    while(ros::ok() && ( !currentState.connected || !inputStreamState || !inputStreamPosition ) ) {
+		ROS_INFO_THROTTLE( MSG_FREQ, "[CMD] Breadcrumb is waiting for connection to mav..." );
 		//ROS_INFO( "SEQ: %i", currentPose.header.seq );
+
+		if( posTimeout < ( ros::Time::now() - currentPose.header.stamp ).toSec() ) {
+			inputStreamPosition = false;
+			posCounter = 0;
+		} else {
+			posCounter++;
+			if( ( posCounter >= MSG_STREAM_STATE ) && !inputStreamPosition ) {
+				inputStreamPosition = true;
+				ROS_INFO("[CMD] Pose stream acheived!");
+			}
+		}
+
+		if( stateTimeout < ( ros::Time::now() - currentState.header.stamp ).toSec() ) {
+			inputStreamState = false;
+			stateCounter = 0;
+		} else {
+			stateCounter++;
+			if( (stateCounter >= MSG_STREAM_STATE) && !inputStreamState ) {
+				inputStreamState = true;
+				ROS_INFO("[CMD] State stream acheived!");
+			}
+		}
 
 		ros::spinOnce();
         rate.sleep();
@@ -452,13 +544,32 @@ int main(int argc, char **argv)
 		//Flight Control State Machine //================================================================
 		//Allow remote starting of the system
 		//TODO: Anything?
-		if( currentState.mode == triggerMode )	//Set triggerMode to "NULL" to disable this feature
+		if( currentState.mode == triggerMode )	//TODO: Set triggerMode to "NULL" to disable this feature
 			startSystem = true;
 
+		//Check for recent messages to make sure there is a constant stream of data
+		if( posTimeout < ( ros::Time::now() - currentPose.header.stamp ).toSec() ) {
+			inputStreamPosition = false;
+			posCounter = 0;
+			ROS_ERROR_THROTTLE(MSG_FREQ, "[CMD] Timeout! No fresh positional data is avaliable!");
+		} else {
+			posCounter++;
+			if( ( posCounter >= MSG_STREAM_STATE ) && !inputStreamPosition )
+				inputStreamPosition = true;
+		}
 
-		//TODO: Maybe check to see if the state message is still fresh
+		if( stateTimeout < ( ros::Time::now() - currentState.header.stamp ).toSec() ) {
+			inputStreamState = false;
+			stateCounter = 0;
+			ROS_ERROR_THROTTLE(MSG_FREQ, "[CMD] Timeout! No fresh system state is avaliable!");
+		} else {
+			stateCounter++;
+			if( ( stateCounter >= MSG_STREAM_STATE ) && !inputStreamState )
+				inputStreamState = true;
+		}
+
 		// If the system was running, but the mav has switched modes or disarmed
-		if( ( systemOperational ) && ( ( currentState.mode != "OFFBOARD" ) || ( !currentState.armed ) ) ) {
+		if( ( systemOperational ) && ( ( currentState.mode != "OFFBOARD" ) || ( !currentState.armed ) || !inputStreamState || !inputStreamPosition ) ) {
 			startSystem = false;
 			systemOperational = false;
 
@@ -467,79 +578,87 @@ int main(int argc, char **argv)
 
 			waypointCounter == -1;
 
-			ROS_ERROR( "The mav has changed to a non-controllable state [MODE: %s, ARMED: %d]", currentState.mode.c_str(), currentState.armed );
-			ROS_WARN( "Resetting goal to [HOME] coordinates: [%0.2f, %0.2f, %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z );
-			ROS_WARN( "Disconnecting breadcrumb, breadcrumb can be reconnected when the system has returned to a usable state" );
+			ROS_ERROR( "[CMD] The mav has changed to a non-controllable state [MODE: %s, ARMED: %d]", currentState.mode.c_str(), currentState.armed );
+			ROS_WARN( "[CMD] Resetting goal to [HOME] coordinates: [%0.2f, %0.2f, %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z );
+			ROS_WARN( "[CMD] Disconnecting breadcrumb, breadcrumb can be reconnected when the system has returned to a usable state" );
 		}	//TODO: Get the user to reset if this is the case
 
 		switch( navCurrentMode ) {
 			case NAV_MODE_PRECONNECT:
 				if( startSystem ) {
-					//New request every 5 seconds
-					if( ( ros::Time::now() - lastRequest ) > ros::Duration( 5.0 ) ) {
-						if( currentState.mode != "OFFBOARD" ) {	//If the mav is currently not in OFFBOARD mode
-							ROS_INFO( "Requesting \"OFFBOARD\" mode [%s]", currentState.mode.c_str() );
+					if(inputStreamState && inputStreamPosition ) {
+						//New request every 5 seconds
+						if( ( ros::Time::now() - lastRequest ) > ros::Duration( 5.0 ) ) {
+							if( currentState.mode != "OFFBOARD" ) {	//If the mav is currently not in OFFBOARD mode
+								ROS_INFO( "Requesting \"OFFBOARD\" mode [%s]", currentState.mode.c_str() );
 
-							if( set_mode_client.call(setModeOffB) && setModeOffB.response.success ) {
-								ROS_INFO( "Offboard control enabled" );
+								if( set_mode_client.call(setModeOffB) && setModeOffB.response.success ) {
+									ROS_INFO( "[CMD] Offboard control enabled" );
+								}
 							}
+
+							if( ( currentState.mode == "OFFBOARD" ) && ( !currentState.armed ) ) {
+								ROS_INFO( "[CMD] Attempting to arm mav" );
+
+								if( arming_client.call(arm_cmd) && arm_cmd.response.success ) {
+									ROS_INFO( "[CMD] Mav sucessfully armed" );
+								} else {
+									ROS_INFO( "[CMD] Failed to arm mav" );
+								}
+							}
+
+							lastRequest = ros::Time::now();
 						}
 
-						if( ( currentState.mode == "OFFBOARD" ) && ( !currentState.armed ) ) {
-							ROS_INFO( "Attempting to arm mav" );
+						//If the mav is in the right mode, and is armed
+						if( ( currentState.mode == "OFFBOARD" ) && ( currentState.armed ) ) {
+							//Set the current goal to hold position until the handover is complete (in case this is mid flight)
+							currentGoal = currentPose.pose;
+							floorHeight = currentPose.pose.position.z;
 
-							if( arming_client.call(arm_cmd) && arm_cmd.response.success ) {
-								ROS_INFO( "Mav sucessfully armed" );
-							} else {
-								ROS_INFO( "Failed to arm mav" );
+							if( !homeSet ) {
+								geometry_msgs::Vector3 rot = toEuler( currentPose.pose.orientation );
+
+								rot.x = 0;
+								rot.y = 0;
+								currentGoal.orientation = toQuaternion( rot );
+
+								navGoalHome = currentGoal;
+								navGoalHome.position.z += navGoalTakeoffHeight;
+
+								ROS_WARN( "[NAV] Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( currentGoal.orientation ).z );
 							}
+
+							ROS_INFO( "[CMD] Mav is armed and listening" );
+							navCurrentMode = NAV_MODE_SLEEP;
+							systemOperational = true;
+							startSystem = false;
+							ROS_INFO( "[CMD] Breadcrumb is now active" );
+
+							ROS_WARN( "DEMO MODE SWITCH [TAKEOFF]" );
+							navCurrentMode = NAV_MODE_TAKEOFF; //TODO: Should just not be here
+							changedMode = true;
 						}
-
-						lastRequest = ros::Time::now();
+					} else {
+						ROS_WARN_THROTTLE(MSG_FREQ, "System waiting for state and position stream..." );
 					}
-
-					//If the mav is in the right mode, and is armed
-					if( ( currentState.mode == "OFFBOARD" ) && ( currentState.armed ) ) {
-						//Set the current goal to hold position until the handover is complete (in case this is mid flight)
-						currentGoal = currentPose.pose;
-						floorHeight = currentPose.pose.position.z;
-
-						geometry_msgs::Vector3 rot = toEuler( currentPose.pose.orientation );
-						//ROS_ERROR( "ROTATIONS: [%0.2f,%0.2f,%0.2f,%0.2f]", rot.z,currentPose.pose.orientation.w,currentPose.pose.orientation.x,currentPose.pose.orientation.y,currentPose.pose.orientation.z);
-						rot.x = 0;
-						rot.y = 0;
-						currentGoal.orientation = toQuaternion( rot );
-
-						//TODO: If no home coords are manually set, then home should be above the copter.
-
-						navGoalHome = currentGoal;
-						navGoalHome.position.z += navGoalTakeoffHeight;
-
-						ROS_WARN( "Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( currentGoal.orientation ).z );
-
-
-						ROS_INFO( "Mav is armed and listening" );
-						navCurrentMode = NAV_MODE_SLEEP;
-						systemOperational = true;
-						startSystem = false;
-						ROS_INFO( "Breadcrumb is now active" );
-
-						ROS_WARN( "DEBUG MODE SWITCH [TAKEOFF]" );
-						navCurrentMode = NAV_MODE_TAKEOFF; //TODO: Should just not be here
-						changedMode = true;
-					}
-				} else
+				} else {
 					ROS_INFO_THROTTLE(MSG_FREQ, "Breadcrumb is in standby, awaiting activation..." );
+				}
 
 				break;
 			case NAV_MODE_SLEEP:
+				if( changedMode ) {
+					ROS_WARN("[NAV] Entered SLEEP mode");
+					changedMode = false;
+				}
+
 				ROS_INFO_THROTTLE(MSG_FREQ, "Breadcrumb is conected, awaiting commands..." );
-				break;
-			case NAV_MODE_MISSION_START:
-				//TODO: Should check to see if the mav is flying, if not, add takeoff goal and pass over to mission
+
 				break;
 			case NAV_MODE_TAKEOFF:
 				if( changedMode ) {
+					ROS_WARN("[NAV] Entered TAKEOFF mode");
 					ROS_INFO("Attempting to takeoff...");
 
 					if( !sendMovement ) { //If the mav is disabled, enable outputs
@@ -563,13 +682,14 @@ int main(int argc, char **argv)
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
 					ROS_INFO( "Reached takeoff goal!" );
-					navCurrentMode = NAV_MODE_MISSION;	//TODO: Should be NAV_MODE_SLEEP
+					navCurrentMode = NAV_MODE_MISSION;	//TODO: Should be NAV_MODE_SLEEP, or maybe Home?
 					changedMode = true;
 				}
 
 				break;
 			case NAV_MODE_MISSION:
 				if( changedMode ) {	//Reset the waypoint counter if switching to mission mode
+					ROS_WARN("[NAV] Entered MISSION mode");
 					waypointCounter = -1;
 					ROS_INFO("Begining waypoint mission...");
 					changedMode = false;
@@ -595,49 +715,54 @@ int main(int argc, char **argv)
 
 						mission_confirm_pub.publish( outputConfirm );
 
-						navCurrentMode = NAV_MODE_SLEEP;
+						navCurrentMode = NAV_MODE_HOME;	//TODO: Should be sleep
 						changedMode = true;
 
 						ROS_INFO( "All waypoints have been reached..." );
 					}
 				}
 
-				// TODO: Should have a message to say when a goal was reached
+				// TODO: Should use actionlib to do waypoints?
 			case NAV_MODE_PAUSE:
 				// TODO: Need to have a remote mode change implemented
 				break;
 			case NAV_MODE_HOME:
 				if( changedMode ) {
-					changedMode = false;
+					ROS_WARN("[NAV] Entered HOME mode");
 					ROS_INFO( "Commanding the mav to head to [HOME]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( navGoalHome.orientation ).z );
+					changedMode = false;
 				}
 
 				currentGoal = navGoalHome;
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
 					changedMode = true;
-					navCurrentMode = NAV_MODE_LAND;
+					navCurrentMode = NAV_MODE_LAND;	//TODO: Should be sleep
 				}
 
 				break;
 			case NAV_MODE_LAND:
 				//TODO: Should check the current position to know when to cut velocity, or to disarm when on the ground.
-				currentGoal = currentPose.pose;
-				currentGoal.position.z = floorHeight;
-
 				if( changedMode ) {
-					changedMode = false;
+					ROS_WARN("[NAV] Entered LAND mode");
+
+					currentGoal = currentPose.pose;
+					currentGoal.position.z = floorHeight;
+
 					ROS_INFO( "Commanding the mav to land: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
+
+					changedMode = false;
 				}
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
 					ROS_INFO( "Reached landing goal!" );
-
-					ROS_WARN( "Attempting to disarm mav" );
+					/* TODO: Could be useful, but out of scope
+					ROS_WARN( "[CMD] Attempting to disarm mav" );
 					if( arming_client.call(disarm_cmd) && disarm_cmd.response.success ) {
-						ROS_INFO( "Mav disarmed" );
-					}
-
+						ROS_INFO( "[CMD] Mav disarmed" );
+					} else
+						ROS_ERROR( "[CMD] Something went wrong, mav won't disarm" );
+					*/
 					sendMovement = false;
 					changedMode = true;
 					navCurrentMode = NAV_MODE_SLEEP;
@@ -652,11 +777,8 @@ int main(int argc, char **argv)
 				//terminate = true;
 
 				break;
-			case NAV_MODE_MISSION_END:
-				//TODO: Set a goal of waypoints the same as home, then switch to landing mode
-				break;
 			default:
-				ROS_ERROR( "Breadcrumb: Mode was set to an invalid value [%d]", navCurrentMode);
+				ROS_ERROR( "[CMD] Mode was set to an invalid value [%d]", navCurrentMode);
 				terminate = true;
 
 				break;
@@ -695,9 +817,8 @@ int main(int argc, char **argv)
 				outputVelocity.twist.linear.x = pos_x_pid.step(currentGoal.position.x, currentPose.pose.position.x);
 				outputVelocity.twist.linear.y = pos_y_pid.step(currentGoal.position.y, currentPose.pose.position.y);
 				outputVelocity.twist.linear.z = pos_z_pid.step(currentGoal.position.z, currentPose.pose.position.z);
+				outputVelocity.twist.angular.z = ang_h_pid.step(toEuler( currentGoal.orientation ).z, toEuler( currentPose.pose.orientation ).z);
 			}
-
-			//TODO: Heading?
 
 			//Acceleration
 			if( sendAcceleration ) {	// Omly bother to calculate if the requested
@@ -705,8 +826,10 @@ int main(int argc, char **argv)
 				outputAcceleration.vector.y = vel_y_pid.step(outputVelocity.twist.linear.y, currentVelocity.linear.y);
 				outputAcceleration.vector.z = vel_z_pid.step(outputVelocity.twist.linear.z, currentVelocity.linear.z);
 			}
+
+			//TODO: Heading?
 		} else {
-			ROS_WARN_THROTTLE(MSG_FREQ, "Commanding the mav to stay still..." );
+			ROS_WARN_THROTTLE(MSG_FREQ, "[NAV] Commanding the mav to stay still..." );
 			/*
 			outputTwist.twist.linear.x = 0;
 			outputTwist.twist.linear.y = 0;
@@ -727,10 +850,10 @@ int main(int argc, char **argv)
 			outputPosition.pose = currentPose.pose;
 
 			//Zero out velocity
-			outputVelocity.twist.linear.x = 0;
-			outputVelocity.twist.linear.y = 0;
-			outputVelocity.twist.linear.z = 0;
-			outputVelocity.twist.angular.z = 0;
+			outputVelocity.twist.linear.x = 0.0;
+			outputVelocity.twist.linear.y = 0.0;
+			outputVelocity.twist.linear.z = 0.0;
+			outputVelocity.twist.angular.z = 0.0;
 
 			//Zero out acceleration
 			outputAcceleration.vector.x = 0.0;
@@ -761,13 +884,13 @@ int main(int argc, char **argv)
 	// Shutdown                       //
 	//================================//
 
-	ROS_INFO( "Breadcrumb is shutting down" );
+	ROS_INFO( "[CMD] Breadcrumb is shutting down" );
 
 	if( currentState.mode == "OFFBOARD" )
-		ROS_WARN( "Mav is still in OFFBOARD mode!" );
+		ROS_WARN( "[CMD] Mav is still in OFFBOARD mode!" );
 
 	if( currentState.armed )
-		ROS_WARN( "Mav is still armed!" );
+		ROS_WARN( "[CMD] Mav is still armed!" );
 
 
 	return 0;
