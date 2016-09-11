@@ -35,14 +35,25 @@
 #define MSG_STREAM_STATE 5
 
 enum navModes {
-	NAV_MODE_PRECONNECT,	// Waiting for MavROS
-	NAV_MODE_SLEEP,			// Connection is running (and system may or may not be broadcasting control signals)
+	NAV_MODE_PRECONNECT = 0,// Waiting for MavROS
+	NAV_MODE_SLEEP,			// Connection is running, command to hold position (and system may or may not be broadcasting control signals)
 	NAV_MODE_TAKEOFF,		// Set the current goal straight above the mav at takeoff height, then fly to home
 	NAV_MODE_MISSION,		// Follow waypoint mission
 	NAV_MODE_PAUSE,			// Waypoints are put on hold to stay at current location (could modify waypoints here)
 	NAV_MODE_HOME,			// Returns to a defined home location
 	NAV_MODE_LAND,			// Land at current position (then rely on the auto disarm)
 	NAV_MODE_HALT			// Stop breadcrumb, but leave the UAV in a pre-set mode (Loiter if not specified)
+};
+
+const std::vector<std::string> modeNames = {
+	"PRECONNECT",
+	"SLEEP",
+	"TAKEOFF",
+	"MISSION",
+	"PAUSE",
+	"HOME",
+	"LAND",
+	"HALT"
 };
 
 //These should be in a top-level controller, not here
@@ -94,6 +105,16 @@ double headingAccuracy = 0.1;
 double floorHeight = 0.0;
 std::vector<geometry_msgs::Pose> waypointList;
 int waypointCounter = -1;
+
+bool systemOperational = false;	//Status to see if breadcrumb should be in control
+bool startSystem = true;	//Set by a service to start breadcrumb
+bool homeSet = false;		//Used to track if the user has manually set a home location
+bool sendMovement = false;	//Should be set to false when the UAV should not be moving
+bool terminate = false;
+bool changedMode = false;	//Should be set on each mode change to allow gracefull passover
+bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
+bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
+
 
 /*
 Services:

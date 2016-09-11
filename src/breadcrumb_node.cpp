@@ -5,7 +5,82 @@
 */
 
 #include "breadcrumb_node.h"
+#include "breadcrumb/SetMode.h"
 #include "pid.h"
+
+
+//================================//
+// Service Functions              //
+//================================//
+
+bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Response &res) {
+	res.success = false;
+
+	ROS_INFO("Mode switch was requested: %s", modeNames.at( req.mode_req ).c_str() );
+
+	//TODO: Finish off this service!
+	switch( navCurrentMode ) {
+		//Don't allow switch from PRECONNECT
+		case NAV_MODE_PRECONNECT:
+			ROS_WARN( "Refusing to switch out of mode: %s", modeNames.at( navCurrentMode ).c_str() );
+
+			break;
+		//Allow switch to any mode (other than preconnect)
+		case NAV_MODE_SLEEP:
+			navCurrentMode = req.mode_req;
+			changedMode = true;
+			res.success = true;
+
+			ROS_INFO( "[NAV] Activating navigation, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+
+			break;
+		//Allow switch to SLEEP, LAND
+		case NAV_MODE_TAKEOFF:
+			if( ( req.mode_req == NAV_MODE_SLEEP ) || ( req.mode_req == NAV_MODE_LAND ) ) {
+				navCurrentMode = req.mode_req;
+				changedMode = true;
+				res.success = true;
+				ROS_WARN( "[NAV] Halting takeoff, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+			} else {
+				ROS_ERROR( "[NAV] Takeoff in progress, refusing mode switch to: %s", modeNames.at( req.mode_req ).c_str());
+			}
+
+			break;
+		//Allow switch to SLEEP, PAUSE, HOME, LAND
+		case NAV_MODE_MISSION:
+			break;
+		//Allow swtich to SLEEP, MISSION, HOME, LAND
+		case NAV_MODE_PAUSE:
+			break;
+		//Allow switch to SLEEP, MISSION, or LAND
+		case NAV_MODE_HOME:
+			break;
+		//Only allow switch to SLEEP
+		case NAV_MODE_LAND:
+			if( req.mode_req == NAV_MODE_SLEEP ) {
+				navCurrentMode = req.mode_req;
+				changedMode = true;
+				res.success = true;
+				ROS_WARN( "[NAV] Halting landing, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+			} else {
+				ROS_ERROR( "[NAV] Landing in progress, refusing mode switch to: %s", modeNames.at( req.mode_req ).c_str());
+			}
+
+			break;
+		//Don't allow switch from HALT
+		case NAV_MODE_HALT:
+			ROS_ERROR( "Breadcrumb should be exiting!" );
+
+			break;
+		default:
+			ROS_ERROR( "[CMD] Mode was set to an invalid value [%d]", navCurrentMode);
+			terminate = true;
+
+			break;
+	}
+
+	return true;
+}
 
 
 //================================//
@@ -170,14 +245,6 @@ int main(int argc, char **argv)
 	//==== Logic Operators ====//
 	//bool changedNavMode = true;
 	navCurrentMode = NAV_MODE_PRECONNECT;
-	bool systemOperational = false;	//Status to see if breadcrumb should be in control
-	bool startSystem = true;	//Set by a service to start breadcrumb
-	bool homeSet = false;		//Used to track if the user has manually set a home location
-	bool sendMovement = false;	//Should be set to false when the UAV should not be moving
-	bool terminate = false;
-	bool changedMode = false;	//Should be set on each mode change to allow gracefull passover
-	bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
-	bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 
 	ROS_INFO("[System Parameters]");
 
@@ -466,6 +533,7 @@ int main(int argc, char **argv)
 		( "/mavros/cmd/arming" );
 	ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>
 		( "/mavros/set_mode" );
+	ros::ServiceServer service = nh.advertiseService("set_mode", set_mode_srv);
 
 
 	//================================//
@@ -649,8 +717,10 @@ int main(int argc, char **argv)
 				break;
 			case NAV_MODE_SLEEP:
 				if( changedMode ) {
-					ROS_WARN("[NAV] Entered SLEEP mode");
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 					changedMode = false;
+					currentGoal = currentPose.pose;
+					ROS_INFO( "[NAV] Commanding to hold position..." );
 				}
 
 				ROS_INFO_THROTTLE(MSG_FREQ, "Breadcrumb is conected, awaiting commands..." );
@@ -658,7 +728,7 @@ int main(int argc, char **argv)
 				break;
 			case NAV_MODE_TAKEOFF:
 				if( changedMode ) {
-					ROS_WARN("[NAV] Entered TAKEOFF mode");
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 					ROS_INFO("Attempting to takeoff...");
 
 					if( !sendMovement ) { //If the mav is disabled, enable outputs
@@ -670,7 +740,7 @@ int main(int argc, char **argv)
 
 						currentGoal = navGoalTakeoff;
 
-						ROS_INFO( "Commanding the mav to head to [TAKEOFF]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalTakeoff.position.x, navGoalTakeoff.position.y, navGoalTakeoff.position.z, toEuler( navGoalTakeoff.orientation ).z );
+						ROS_INFO( "[NAV] Commanding the mav to head to [TAKEOFF]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalTakeoff.position.x, navGoalTakeoff.position.y, navGoalTakeoff.position.z, toEuler( navGoalTakeoff.orientation ).z );
 					} else { //Motor commands are active, but the mav might be on the ground?
 						ROS_WARN("The mav is already being controlled (and it seems like it should be flying!");
 						ROS_WARN("Commanding to hold position!");
@@ -689,7 +759,7 @@ int main(int argc, char **argv)
 				break;
 			case NAV_MODE_MISSION:
 				if( changedMode ) {	//Reset the waypoint counter if switching to mission mode
-					ROS_WARN("[NAV] Entered MISSION mode");
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 					waypointCounter = -1;
 					ROS_INFO("Begining waypoint mission...");
 					changedMode = false;
@@ -728,7 +798,7 @@ int main(int argc, char **argv)
 				break;
 			case NAV_MODE_HOME:
 				if( changedMode ) {
-					ROS_WARN("[NAV] Entered HOME mode");
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 					ROS_INFO( "Commanding the mav to head to [HOME]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( navGoalHome.orientation ).z );
 					changedMode = false;
 				}
@@ -744,7 +814,7 @@ int main(int argc, char **argv)
 			case NAV_MODE_LAND:
 				//TODO: Should check the current position to know when to cut velocity, or to disarm when on the ground.
 				if( changedMode ) {
-					ROS_WARN("[NAV] Entered LAND mode");
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 
 					currentGoal = currentPose.pose;
 					currentGoal.position.z = floorHeight;
@@ -777,8 +847,15 @@ int main(int argc, char **argv)
 				//terminate = true;
 
 				break;
+			case NAV_MODE_HALT:
+				if( changedMode ) {
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
+					changedMode = false;
+				}
+
+				break;
 			default:
-				ROS_ERROR( "[CMD] Mode was set to an invalid value [%d]", navCurrentMode);
+				ROS_ERROR( "[NAV] Mode was set to an invalid value [%d]", navCurrentMode);
 				terminate = true;
 
 				break;
