@@ -3,7 +3,7 @@
 		<!-- Connection Parameters -->
 		<param name="position_input" value="/mavros/local_position/pose" type="str"/>
 
-		<!--param name="position_goal" value="/mavros/setpoint_position/local" type="str" /-->
+		<param name="position_goal" value="goal/position" type="str" /-->
 		<param name="velocity_goal" value="/mavros/setpoint_velocity/cmd_vel" type="str" />
 		<!--param name="acceleration_goal" value="/mavros/setpoint_accel/accel" type="str" /-->
 
