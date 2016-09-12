@@ -291,6 +291,8 @@ int main(int argc, char **argv)
 	const std_msgs::Empty outputConfirm;
 
 	double navGoalTakeoffHeight = 1.0;
+	
+	outputPosition.header.frame_id = "/world";
 
 	//==== Logic Operators ====//
 	//bool changedNavMode = true;
@@ -693,9 +695,9 @@ int main(int argc, char **argv)
 		if( ( systemOperational ) && ( ( currentState.mode != "OFFBOARD" ) || ( !currentState.armed ) || !inputStreamState || !inputStreamPosition ) ) {
 			startSystem = false;
 			systemOperational = false;
-
+			sendMovement = false;
+			currentGoal = currentPose.pose;
 			navCurrentMode = NAV_MODE_PRECONNECT;
-			currentGoal = navGoalHome;
 
 			waypointCounter == -1;
 

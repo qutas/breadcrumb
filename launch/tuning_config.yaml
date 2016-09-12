@@ -23,7 +23,7 @@ guidance:
 pos_xy_pid:
   p: 0.6
   i: 0.0
-  d: 0.4
+  d: 0.1
   min: -1.0
   max: 1.0
 
