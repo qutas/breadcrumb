@@ -6,6 +6,7 @@
 
 #include "breadcrumb_node.h"
 #include "breadcrumb/SetMode.h"
+#include "breadcrumb/Activate.h"
 #include "pid.h"
 
 
@@ -19,10 +20,15 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 	ROS_INFO("Mode switch was requested: %s", modeNames.at( req.mode_req ).c_str() );
 
 	//TODO: Finish off this service!
+	//TODO: Only allow switch to mission mode if there are waypoints
 	switch( navCurrentMode ) {
 		//Don't allow switch from PRECONNECT
 		case NAV_MODE_PRECONNECT:
-			ROS_WARN( "Refusing to switch out of mode: %s", modeNames.at( navCurrentMode ).c_str() );
+			if( req.mode_req == NAV_MODE_SLEEP ) {
+				ROS_WARN( "[NAV] Halting breadcrumb: %s", modeNames.at( navCurrentMode ).c_str() );
+			} else {
+				ROS_WARN( "[NAV] Refusing to switch out of mode: %s", modeNames.at( navCurrentMode ).c_str() );
+			}
 
 			break;
 		//Allow switch to any mode (other than preconnect)
@@ -48,12 +54,24 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 			break;
 		//Allow switch to SLEEP, PAUSE, HOME, LAND
 		case NAV_MODE_MISSION:
+			if( ( req.mode_req == NAV_MODE_SLEEP ) || ( req.mode_req == NAV_MODE_LAND ) ) {
+				navCurrentMode = req.mode_req;
+				changedMode = true;
+				res.success = true;
+				waypointCounter = -1;
+				ROS_WARN( "[NAV] Halting takeoff, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+			} else {
+				ROS_ERROR( "[NAV] Mission in progress, refusing mode switch to: %s", modeNames.at( req.mode_req ).c_str());
+			} //TODO: Should always be able to quit mission
+
 			break;
 		//Allow swtich to SLEEP, MISSION, HOME, LAND
 		case NAV_MODE_PAUSE:
+			ROS_ERROR("TODO!");
 			break;
 		//Allow switch to SLEEP, MISSION, or LAND
 		case NAV_MODE_HOME:
+			ROS_ERROR("TODO!");
 			break;
 		//Only allow switch to SLEEP
 		case NAV_MODE_LAND:
@@ -69,7 +87,7 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 			break;
 		//Don't allow switch from HALT
 		case NAV_MODE_HALT:
-			ROS_ERROR( "Breadcrumb should be exiting!" );
+			ROS_ERROR( "Breadcrumb should be exiting, can't change mode!" );
 
 			break;
 		default:
@@ -77,6 +95,40 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 			terminate = true;
 
 			break;
+	}
+
+	return true;
+}
+
+bool activate_srv(breadcrumb::Activate::Request &req, breadcrumb::Activate::Response &res) {
+	startSystem = false;
+	res.success = req.ACT_ACCEPTED;
+
+	//Only bother checing if there hasn't been a previous error
+	if( ( res.success > req.ACT_DENIED_GENERIC ) && !currentState.connected ) {
+		ROS_ERROR( "Refusing activation, no connection to mav has been made" );
+		res.success = req.ACT_DENIED_NO_CONNECT;
+	}
+
+	if( ( res.success > req.ACT_DENIED_GENERIC ) && !inputStreamState ) {
+		ROS_ERROR( "Refusing activation, waiting for state stream" );
+		res.success = req.ACT_DENIED_STATE;
+	}
+
+	if( ( res.success > req.ACT_DENIED_GENERIC ) && !inputStreamPosition ) {
+		ROS_ERROR( "Refusing activation, waiting for position stream" );
+		res.success = req.ACT_DENIED_POSITION;
+	}
+
+	if( ( res.success > req.ACT_DENIED_GENERIC ) && ( lastRequest.nsec == 0 ) && ( lastRequest.sec == 0 ) ) {
+		ROS_ERROR( "Refusing activation, system hasn't finished starting" );
+		res.success = req.ACT_DENIED_GENERIC;
+	}
+
+	//If nothing is preventing activation
+	if( res.success == req.ACT_ACCEPTED ) {
+		startSystem = true;
+		ROS_WARN( "Activating breadcrumb!" );
 	}
 
 	return true;
@@ -235,8 +287,6 @@ int main(int argc, char **argv)
 	arm_cmd.request.value = true;
 	mavros_msgs::CommandBool disarm_cmd;
 	disarm_cmd.request.value = false;
-
-	ros::Time lastRequest = ros::Time(0);
 
 	const std_msgs::Empty outputConfirm;
 
@@ -533,7 +583,10 @@ int main(int argc, char **argv)
 		( "/mavros/cmd/arming" );
 	ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>
 		( "/mavros/set_mode" );
-	ros::ServiceServer service = nh.advertiseService("set_mode", set_mode_srv);
+	ros::ServiceServer set_mode_service = nh.advertiseService
+		("set_mode", set_mode_srv);
+	ros::ServiceServer activate_service = nh.advertiseService
+		("activate", activate_srv);
 
 
 	//================================//
@@ -654,61 +707,57 @@ int main(int argc, char **argv)
 		switch( navCurrentMode ) {
 			case NAV_MODE_PRECONNECT:
 				if( startSystem ) {
-					if(inputStreamState && inputStreamPosition ) {
-						//New request every 5 seconds
-						if( ( ros::Time::now() - lastRequest ) > ros::Duration( 5.0 ) ) {
-							if( currentState.mode != "OFFBOARD" ) {	//If the mav is currently not in OFFBOARD mode
-								ROS_INFO( "Requesting \"OFFBOARD\" mode [%s]", currentState.mode.c_str() );
+					//New request every 5 seconds
+					if( ( ros::Time::now() - lastRequest ) > ros::Duration( 5.0 ) ) {
+						if( currentState.mode != "OFFBOARD" ) {	//If the mav is currently not in OFFBOARD mode
+							ROS_INFO( "Requesting \"OFFBOARD\" mode [%s]", currentState.mode.c_str() );
 
-								if( set_mode_client.call(setModeOffB) && setModeOffB.response.success ) {
-									ROS_INFO( "[CMD] Offboard control enabled" );
-								}
+							if( set_mode_client.call(setModeOffB) && setModeOffB.response.success ) {
+								ROS_INFO( "[CMD] Offboard control enabled" );
 							}
-
-							if( ( currentState.mode == "OFFBOARD" ) && ( !currentState.armed ) ) {
-								ROS_INFO( "[CMD] Attempting to arm mav" );
-
-								if( arming_client.call(arm_cmd) && arm_cmd.response.success ) {
-									ROS_INFO( "[CMD] Mav sucessfully armed" );
-								} else {
-									ROS_INFO( "[CMD] Failed to arm mav" );
-								}
-							}
-
-							lastRequest = ros::Time::now();
 						}
 
-						//If the mav is in the right mode, and is armed
-						if( ( currentState.mode == "OFFBOARD" ) && ( currentState.armed ) ) {
-							//Set the current goal to hold position until the handover is complete (in case this is mid flight)
-							currentGoal = currentPose.pose;
-							floorHeight = currentPose.pose.position.z;
+						if( ( currentState.mode == "OFFBOARD" ) && ( !currentState.armed ) ) {
+							ROS_INFO( "[CMD] Attempting to arm mav" );
 
-							if( !homeSet ) {
-								geometry_msgs::Vector3 rot = toEuler( currentPose.pose.orientation );
-
-								rot.x = 0;
-								rot.y = 0;
-								currentGoal.orientation = toQuaternion( rot );
-
-								navGoalHome = currentGoal;
-								navGoalHome.position.z += navGoalTakeoffHeight;
-
-								ROS_WARN( "[NAV] Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( currentGoal.orientation ).z );
+							if( arming_client.call(arm_cmd) && arm_cmd.response.success ) {
+								ROS_INFO( "[CMD] Mav sucessfully armed" );
+							} else {
+								ROS_INFO( "[CMD] Failed to arm mav" );
 							}
-
-							ROS_INFO( "[CMD] Mav is armed and listening" );
-							navCurrentMode = NAV_MODE_SLEEP;
-							systemOperational = true;
-							startSystem = false;
-							ROS_INFO( "[CMD] Breadcrumb is now active" );
-
-							ROS_WARN( "DEMO MODE SWITCH [TAKEOFF]" );
-							navCurrentMode = NAV_MODE_TAKEOFF; //TODO: Should just not be here
-							changedMode = true;
 						}
-					} else {
-						ROS_WARN_THROTTLE(MSG_FREQ, "System waiting for state and position stream..." );
+
+						lastRequest = ros::Time::now();
+					}
+
+					//If the mav is in the right mode, and is armed
+					if( ( currentState.mode == "OFFBOARD" ) && ( currentState.armed ) ) {
+						//Set the current goal to hold position until the handover is complete (in case this is mid flight)
+						currentGoal = currentPose.pose;
+						floorHeight = currentPose.pose.position.z;
+
+						if( !homeSet ) {
+							geometry_msgs::Vector3 rot = toEuler( currentPose.pose.orientation );
+
+							rot.x = 0;
+							rot.y = 0;
+							currentGoal.orientation = toQuaternion( rot );
+
+							navGoalHome = currentGoal;
+							navGoalHome.position.z += navGoalTakeoffHeight;
+
+							ROS_WARN( "[NAV] Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( currentGoal.orientation ).z );
+						}
+
+						ROS_INFO( "[CMD] Mav is armed and listening" );
+						navCurrentMode = NAV_MODE_SLEEP;
+						systemOperational = true;
+						startSystem = false;
+						ROS_INFO( "[CMD] Breadcrumb is now active" );
+
+						ROS_WARN( "DEMO MODE SWITCH [TAKEOFF]" );
+						navCurrentMode = NAV_MODE_TAKEOFF; //TODO: Should just not be here
+						changedMode = true;
 					}
 				} else {
 					ROS_INFO_THROTTLE(MSG_FREQ, "Breadcrumb is in standby, awaiting activation..." );
@@ -834,6 +883,7 @@ int main(int argc, char **argv)
 						ROS_ERROR( "[CMD] Something went wrong, mav won't disarm" );
 					*/
 					sendMovement = false;
+					currentGoal = currentPose.pose;
 					changedMode = true;
 					navCurrentMode = NAV_MODE_SLEEP;
 				}
@@ -852,6 +902,8 @@ int main(int argc, char **argv)
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 					changedMode = false;
 				}
+
+				terminate = true;
 
 				break;
 			default:
@@ -924,7 +976,7 @@ int main(int argc, char **argv)
 			//Set zero for everything, just to be safe
 
 			//Zero out position
-			outputPosition.pose = currentPose.pose;
+			outputPosition.pose = currentGoal;
 
 			//Zero out velocity
 			outputVelocity.twist.linear.x = 0.0;

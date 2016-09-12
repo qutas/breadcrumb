@@ -8,7 +8,6 @@ find_package(catkin REQUIRED COMPONENTS
   mavros_msgs
   roscpp
   geometry_msgs
-  tf
   message_generation
 )
 
@@ -56,6 +55,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
   FILES
   SetMode.srv
+  #Activate.srv
 )
 
 ## Generate actions in the 'action' folder

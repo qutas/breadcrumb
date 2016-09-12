@@ -107,14 +107,14 @@ std::vector<geometry_msgs::Pose> waypointList;
 int waypointCounter = -1;
 
 bool systemOperational = false;	//Status to see if breadcrumb should be in control
-bool startSystem = true;	//Set by a service to start breadcrumb
+bool startSystem = false;	//Set by a service to start breadcrumb
 bool homeSet = false;		//Used to track if the user has manually set a home location
 bool sendMovement = false;	//Should be set to false when the UAV should not be moving
 bool terminate = false;
 bool changedMode = false;	//Should be set on each mode change to allow gracefull passover
 bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
-
+ros::Time lastRequest = ros::Time(0);
 
 /*
 Services:
