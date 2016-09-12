@@ -1,0 +1,108 @@
+#!/usr/bin/env python2
+
+import argparse
+import rospy
+from breadcrumb.srv import *
+
+#def _arm(args, state):
+#    try:
+#        ret = command.arming(value=state)
+#    except rospy.ServiceException as ex:
+#        fault(ex)
+#
+#    if not ret.success:
+#        fault("Request failed.")
+#
+#    print_if(args.verbose, "Command result:", ret.result)
+#    return ret
+
+
+#def do_arm(args):
+#    _arm(args, True)
+
+def do_set_mode(args):
+	m = 0
+	rospy.wait_for_service("/breadcrumb/set_mode")
+
+	if args.mode == "PRECONNECT":
+		m = SetMode._request_class.NAV_MODE_PRECONNECT
+	elif args.mode == "SLEEP":
+		m = SetMode._request_class.NAV_MODE_SLEEP
+	elif args.mode == "TAKEOFF":
+		m = SetMode._request_class.NAV_MODE_TAKEOFF
+	elif args.mode == "MISSION":
+		m = SetMode._request_class.NAV_MODE_MISSION
+	elif args.mode == "PAUSE":
+		m = SetMode._request_class.NAV_MODE_PAUSE
+	elif args.mode == "HOME":
+		m = SetMode._request_class.NAV_MODE_HOME
+	elif args.mode == "LAND":
+		m = SetMode._request_class.NAV_MODE_LAND
+	elif args.mode == "HALT":
+		m = SetMode._request_class.NAV_MODE_HALT
+
+	try:
+		req = rospy.ServiceProxy("/breadcrumb/set_mode", SetMode)
+		ret = req(m)
+	except rospy.ServiceException, e:
+		print "Service call failed: %s"%e
+
+	if ret.success:
+		print "Mode successfully set!"
+	else:
+		print "Failed to set new mode\nCheck breadcrumb logs for more details"
+
+	if args.verbose:
+		print "Command result: %i"%ret.success
+
+	return ret
+
+def do_activate(args):
+
+	rospy.wait_for_service("/breadcrumb/activate")
+
+	try:
+		req = rospy.ServiceProxy("/breadcrumb/activate", Activate)
+		ret = req()
+	except rospy.ServiceException, e:
+		print "Service call failed: %s"%e
+
+	if ret.success == 1:
+		print "Breadcrumb activated!"
+	else:
+		print "Request to activate was denied: "
+		if ret.success == Activate._request_class.ACT_DENIED_GENERIC:
+			print "\tCheck breadcrumb logs for more details."
+		elif ret.success == Activate._request_class.ACT_DENIED_STATE:
+			print "\tA state message steam has not been established."
+		elif ret.success == Activate._request_class.ACT_DENIED_POSITION:
+			print "\tA position message steam has not been established."
+		elif ret.success == Activate._request_class.ACT_DENIED_NO_CONNECT:
+			print "\tContact with the mav has not been made."
+
+	if args.verbose:
+		print "Command result: %i"%ret.success
+
+	return ret
+
+def main():
+	parser = argparse.ArgumentParser(description="Commad line tool for controlling the Breadcrumb guidance system.")
+	parser.add_argument('-n', '--breadcrumb-ns', help="ROS node namespace", default="/breadcrumb")
+	parser.add_argument('-v', '--verbose', action='store_true', help="verbose output")
+	subarg = parser.add_subparsers()
+
+	activate_args = subarg.add_parser('activate', help="Request activation of the guidance system")
+	activate_args.set_defaults(func=do_activate)
+
+	set_mode_args = subarg.add_parser('setmode', help="Request a guidance mode")
+	set_mode_args.set_defaults(func=do_set_mode)
+	set_mode_args.add_argument('mode', type=str, help="Avaliable modes: PRECONNECT, SLEEP, TAKEOFF, MISSION, PAUSE, HOME, LAND, HALT")
+
+	args = parser.parse_args(rospy.myargv(argv=sys.argv)[1:])
+
+	rospy.init_node("commander", anonymous=True)
+	args.func(args)
+
+
+if __name__ == '__main__':
+	main()

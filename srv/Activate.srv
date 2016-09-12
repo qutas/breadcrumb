@@ -1,0 +1,10 @@
+
+int8 ACT_ACCEPTED = 1
+int8 ACT_DENIED_GENERIC = 0
+int8 ACT_DENIED_STATE = -1
+int8 ACT_DENIED_POSITION = -2
+int8 ACT_DENIED_NO_CONNECT = -3
+
+# No arguments expected
+---
+int8 success
