@@ -17,6 +17,10 @@
 #include <geometry_msgs/Vector3Stamped.h>
 #include <geometry_msgs/Vector3.h>
 
+#include <tf/tf.h>
+#include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
+
 #include <mavros_msgs/CommandBool.h>
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
@@ -33,6 +37,11 @@
 #define MSG_FREQ 15.0
 #define MSG_STREAM_POS 20
 #define MSG_STREAM_STATE 5
+
+enum frameOutput {
+	VEL_FRAME_WORLD = 0,	//Output velocity in the world frame
+	VEL_FRAME_BODY			//Output velocity in the body frame
+};
 
 enum navModes {
 	NAV_MODE_PRECONNECT = 0,// Waiting for MavROS
@@ -87,12 +96,10 @@ mavros_msgs::State currentState;
 //mavros_msgs::PositionTarget outputTarget;
 
 //geometry_msgs::PoseStamped outputTwist;
-geometry_msgs::Vector3Stamped outputAcceleration;
 geometry_msgs::TwistStamped outputVelocity;
 geometry_msgs::PoseStamped outputPosition;
 
 geometry_msgs::PoseStamped currentPose;
-geometry_msgs::Twist currentVelocity;
 geometry_msgs::Pose navGoalHome;
 geometry_msgs::Pose navGoalTakeoff;
 geometry_msgs::Pose currentGoal;
@@ -115,6 +122,10 @@ bool changedMode = false;	//Should be set on each mode change to allow gracefull
 bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 ros::Time lastRequest = ros::Time(0);
+
+//TF
+tf::TransformBroadcaster* tfbr;
+tf::TransformListener* tfln;
 
 /*
 Services:

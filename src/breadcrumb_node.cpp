@@ -144,12 +144,27 @@ void state_cb(const mavros_msgs::State::ConstPtr& msg) {
 }
 
 void local_pos_cb(const geometry_msgs::PoseStamped::ConstPtr& msg) {
-	double dt = (msg->header.stamp - currentPose.header.stamp).toSec();
-	currentVelocity.linear.x = (msg->pose.position.x - currentPose.pose.position.x) / dt;
-	currentVelocity.linear.y = (msg->pose.position.y - currentPose.pose.position.y) / dt;
-	currentVelocity.linear.z = (msg->pose.position.z - currentPose.pose.position.z) / dt;
-
 	currentPose = *msg;
+
+	/*
+	//Create a transform for the "base link" of the mav (One that has no roll or pitch)
+	tf::Transform transformRef;
+	tf::Transform transformBase;
+	tf::Quaternion qBase;
+	tf::Quaternion qRef;
+
+	double heading = toEuler( currentPose.pose.orientation ).z;
+	qRef.setRPY(0.0, 0.0, 0.0 );
+	transformRef.setRotation( qRef );
+	qBase.setRPY(0.0, 0.0, heading );
+	transformBase.setRotation( qBase );
+
+	transformBase.setOrigin( tf::Vector3( currentPose.pose.position.x, currentPose.pose.position.y, currentPose.pose.position.z ) );
+	transformRef.setOrigin( tf::Vector3( currentPose.pose.position.x, currentPose.pose.position.y, currentPose.pose.position.z ) );
+
+	tfbr->sendTransform( tf::StampedTransform(transformRef, ros::Time::now(), "world", "fcu/ref") );
+	tfbr->sendTransform( tf::StampedTransform(transformBase, ros::Time::now(), "world", "fcu/base") );
+	*/
 }
 
 void waypoint_cb(const geometry_msgs::PoseArray::ConstPtr& msg) {
@@ -236,13 +251,11 @@ int main(int argc, char **argv)
 
 	std::string positionOutputTopic = "goal/position_target";
 	std::string velocityOutputTopic = "goal/velocity_target";
-	std::string accelerationOutputTopic = "goal/acceleration_target";
 
 	std::string waypointConfirm = "goal/waypoint_complete";
 	std::string missionConfirm = "goal/mission_complete";
 
 	bool sendVelocity = true;
-	bool sendAcceleration = true;
 
 	//==== Prepare Topics ====//
 	//outputTwist.header.frame_id = "fcu";
@@ -266,6 +279,8 @@ int main(int argc, char **argv)
 	double posTimeout = 1.0;
 	long stateCounter = 0;;
 	long posCounter = 0;
+	std::string velFrameStr = "world";
+	int velocityFrame = -1;
 
 	//==== MavROS Interface ====//
 
@@ -291,7 +306,7 @@ int main(int argc, char **argv)
 	const std_msgs::Empty outputConfirm;
 
 	double navGoalTakeoffHeight = 1.0;
-	
+
 	outputPosition.header.frame_id = "/world";
 
 	//==== Logic Operators ====//
@@ -315,6 +330,25 @@ int main(int argc, char **argv)
 	}
 	ROS_INFO( "Setting control loop rate to: %0.2f", navRate );
 
+	if( !nh.getParam( "system/vel_frame", velFrameStr ) ) {
+		ROS_WARN( "No parameter set for \"system/vel_frame\", using: %s", velFrameStr );
+	}
+
+	if(velFrameStr == "world")
+		velocityFrame = VEL_FRAME_WORLD;
+
+	if(velFrameStr == "body")
+		velocityFrame = VEL_FRAME_BODY;
+
+	if(velocityFrame == -1) {
+		ROS_ERROR( "Invalid velocity output frame: %s", velFrameStr.c_str() );
+		ROS_ERROR( "Using default frame!" );
+		velFrameStr = "body";
+		velocityFrame = VEL_FRAME_BODY;
+	}
+
+	ROS_INFO( "Setting velocity output frame to: %i (%s)", velocityFrame, velFrameStr.c_str() );
+
 	//the setpoint publishing rate MUST be faster than 2Hz
 	ros::Rate rate(navRate);
 
@@ -323,15 +357,7 @@ int main(int argc, char **argv)
 	pid pos_y_pid(1.0/navRate);
 	pid pos_z_pid(1.0/navRate);
 
-	pid vel_x_pid(1.0/navRate);
-	pid vel_y_pid(1.0/navRate);
-	pid vel_z_pid(1.0/navRate);
-
 	pid ang_h_pid(1.0/navRate);
-
-	//pid acc_x_pid(1.0/navRate);
-	//pid acc_y_pid(1.0/navRate);
-	//pid acc_z_pid(1.0/navRate);
 
 	//================================//
 	// Load Parameters                //
@@ -373,15 +399,7 @@ int main(int argc, char **argv)
 		ROS_INFO( "Sending velocity commands to: %s", velocityOutputTopic.c_str() );
 	}
 
-	if( !nh.getParam( "acceleration_goal", accelerationOutputTopic) ) {
-		ROS_WARN( "No parameter set for \"acceleration_goal\", disabling acceleration output" );
-		sendAcceleration = false;
-	} else {
-		ROS_INFO( "Sending acceleration commands to: %s", accelerationOutputTopic.c_str() );
-	}
-
-
-	if( sendVelocity || sendAcceleration ) {
+	if( sendVelocity ) {
 		ROS_INFO("[Position Controller]");
 
 		//POS XY PID //================================================================
@@ -460,61 +478,6 @@ int main(int argc, char **argv)
 		ROS_INFO( "Setting h_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", ang_h_pid.Kp, ang_h_pid.Ki, ang_h_pid.Kd, ang_h_pid.min_output, ang_h_pid.max_output);
 	}
 
-	if( sendAcceleration ) {
-		ROS_INFO("[Velocity Controller]");
-		//VEL XY PID //================================================================
-		if( !nh.getParam( "vel_xy_pid/p", vel_x_pid.Kp) ) {
-			ROS_WARN( "No parameter set for \"vel_xy_pid/p\", using: %0.2f", vel_x_pid.Kp);
-		}
-
-		if( !nh.getParam( "vel_xy_pid/i", vel_x_pid.Ki) ) {
-			ROS_WARN( "No parameter set for \"vel_xy_pid/i\", using: %0.2f", vel_x_pid.Ki);
-		}
-
-		if( !nh.getParam( "vel_xy_pid/d", vel_x_pid.Kd) ) {
-			ROS_WARN( "No parameter set for \"vel_xy_pid/d\", using: %0.2f", vel_x_pid.Kd);
-		}
-
-		if( !nh.getParam( "vel_xy_pid/min", vel_x_pid.min_output) ) {
-			ROS_WARN( "No parameter set for \"vel_xy_pid/min\", using: %0.2f", vel_x_pid.min_output);
-		}
-
-		if( !nh.getParam( "vel_xy_pid/max", vel_x_pid.max_output) ) {
-			ROS_WARN( "No parameter set for \"vel_xy_pid/max\", using: %0.2f", vel_x_pid.max_output);
-		}
-
-		vel_y_pid.Kp = vel_x_pid.Kp;
-		vel_y_pid.Ki = vel_x_pid.Ki;
-		vel_y_pid.Kd = vel_x_pid.Kd;
-		vel_y_pid.min_output = vel_x_pid.min_output;
-		vel_y_pid.max_output = vel_x_pid.max_output;
-
-		ROS_INFO( "Setting vel_xy_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", vel_x_pid.Kp, vel_x_pid.Ki, vel_x_pid.Kd, vel_x_pid.min_output, vel_x_pid.max_output);
-
-		//VEL Z PID //================================================================
-		if( !nh.getParam( "vel_z_pid/p", vel_z_pid.Kp) ) {
-			ROS_WARN( "No parameter set for \"vel_z_pid/p\", using: %0.2f", vel_z_pid.Kp);
-		}
-
-		if( !nh.getParam( "vel_z_pid/i", vel_z_pid.Ki) ) {
-			ROS_WARN( "No parameter set for \"vel_z_pid/i\", using: %0.2f", vel_z_pid.Ki);
-		}
-
-		if( !nh.getParam( "vel_z_pid/d", vel_z_pid.Kd) ) {
-			ROS_WARN( "No parameter set for \"vel_z_pid/d\", using: %0.2f", vel_z_pid.Kd);
-		}
-
-		if( !nh.getParam( "vel_z_pid/min", vel_z_pid.min_output) ) {
-			ROS_WARN( "No parameter set for \"vel_z_pid/min\", using: %0.2f", vel_z_pid.min_output);
-		}
-
-		if( !nh.getParam( "vel_z_pid/max", vel_z_pid.max_output) ) {
-			ROS_WARN( "No parameter set for \"vel_z_pid/max\", using: %0.2f", vel_z_pid.max_output);
-		}
-
-		ROS_INFO( "Setting vel_z_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", vel_z_pid.Kp, vel_z_pid.Ki, vel_z_pid.Kd, vel_z_pid.min_output, vel_z_pid.max_output);
-	}
-
 	ROS_INFO("[Flight Parameters]");
 
 	//TODO:
@@ -544,7 +507,7 @@ int main(int argc, char **argv)
 		nh.getParam( "guidance/home_h", rot.z );
 		navGoalHome.orientation = toQuaternion( rot );
 
-		ROS_INFO( "Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( currentGoal.orientation ).z );
+		ROS_INFO( "Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( navGoalHome.orientation ).z );
 	} else {
 		ROS_WARN( "No [HOME] set, will by dynamically set when mav is connected" );
 	}
@@ -568,8 +531,6 @@ int main(int argc, char **argv)
 	//Publishers
 	//ros::Publisher vel_pub = nh.advertise<mavros_msgs::PositionTarget>
 	//	(velocityOutput, 10);
-	ros::Publisher acc_pub = nh.advertise<geometry_msgs::Vector3Stamped>
-		(accelerationOutputTopic, 10);
 	ros::Publisher vel_pub = nh.advertise<geometry_msgs::TwistStamped>
 		(velocityOutputTopic, 10);
 	ros::Publisher pos_pub = nh.advertise<geometry_msgs::PoseStamped>
@@ -590,6 +551,9 @@ int main(int argc, char **argv)
 	ros::ServiceServer activate_service = nh.advertiseService
 		("activate", activate_srv);
 
+	//TF
+    tfbr = new tf::TransformBroadcaster();
+    tfln = new tf::TransformListener();
 
 	//================================//
 	// Load Waypoints                 //
@@ -598,16 +562,25 @@ int main(int argc, char **argv)
 	//TODO: Remove this and test out the callback method
 
 	geometry_msgs::Vector3 wp_heading;
-	wp_heading.z = 1.57;
+	wp_heading.z = 0.0;
 
 	geometry_msgs::Pose waypointFiller;
-	waypointFiller.position.x = 1;
 	waypointFiller.position.z = 1;
+	wp_heading.z = -3*M_PI/4;
 	waypointFiller.orientation = toQuaternion(wp_heading);
+	waypointList.push_back(waypointFiller);
+	wp_heading.z = 0.0;
+	waypointFiller.orientation = toQuaternion(wp_heading);
+	waypointList.push_back(waypointFiller);
+	waypointFiller.position.x = 1;
 	waypointList.push_back(waypointFiller);
 	waypointFiller.position.y = 1;
 	waypointList.push_back(waypointFiller);
 	waypointFiller.position.x = -1;
+	waypointList.push_back(waypointFiller);
+	waypointFiller.position.x = -1;
+	wp_heading.z = 1.57;
+	waypointFiller.orientation = toQuaternion(wp_heading);
 	waypointList.push_back(waypointFiller);
 	waypointFiller.position.y = -1;
 	waypointList.push_back(waypointFiller);
@@ -654,6 +627,7 @@ int main(int argc, char **argv)
 
 
 	lastRequest = ros::Time::now();
+	currentGoal = currentPose.pose;
 
 	//TODO: This should be implemented into the main loop to watch for a lost connection to the mav
 	//TODO: Watch the Sequence on the pose stamped
@@ -720,13 +694,16 @@ int main(int argc, char **argv)
 						}
 
 						if( ( currentState.mode == "OFFBOARD" ) && ( !currentState.armed ) ) {
+							/*
 							ROS_INFO( "[CMD] Attempting to arm mav" );
 
 							if( arming_client.call(arm_cmd) && arm_cmd.response.success ) {
 								ROS_INFO( "[CMD] Mav sucessfully armed" );
 							} else {
 								ROS_INFO( "[CMD] Failed to arm mav" );
-							}
+							}*/
+
+							ROS_INFO_THROTTLE( 1.0, "Waiting for mav to be armed" );
 						}
 
 						lastRequest = ros::Time::now();
@@ -744,6 +721,7 @@ int main(int argc, char **argv)
 							rot.x = 0;
 							rot.y = 0;
 							currentGoal.orientation = toQuaternion( rot );
+
 
 							navGoalHome = currentGoal;
 							navGoalHome.position.z += navGoalTakeoffHeight;
@@ -876,7 +854,7 @@ int main(int argc, char **argv)
 				}
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
-					ROS_INFO( "Reached landing goal!" );
+					ROS_INFO_THROTTLE( 2.0, "Reached landing goal!" );
 					/* TODO: Could be useful, but out of scope
 					ROS_WARN( "[CMD] Attempting to disarm mav" );
 					if( arming_client.call(disarm_cmd) && disarm_cmd.response.success ) {
@@ -884,10 +862,10 @@ int main(int argc, char **argv)
 					} else
 						ROS_ERROR( "[CMD] Something went wrong, mav won't disarm" );
 					*/
-					sendMovement = false;
-					currentGoal = currentPose.pose;
-					changedMode = true;
-					navCurrentMode = NAV_MODE_SLEEP;
+					//sendMovement = false;
+					//currentGoal = currentPose.pose;
+					//changedMode = true;
+					//navCurrentMode = NAV_MODE_SLEEP;
 				}
 				/*
 				if( set_mode_client.call(setModeLand) && setModeLand.response.success) {
@@ -923,7 +901,28 @@ int main(int argc, char **argv)
 
 		outputPosition.header.stamp = timestamp;
 		outputVelocity.header.stamp = timestamp;
-		outputAcceleration.header.stamp = timestamp;
+
+		tf::Transform transformGoal;
+		tf::poseMsgToTF(currentGoal, transformGoal);
+		tfbr->sendTransform( tf::StampedTransform(transformGoal, ros::Time::now(), "world", "breadcrumb/goal") );
+
+		tf::StampedTransform transformGoalBody;
+
+		try {
+			//Get the latest pose of the fcu in the world
+			tfln->lookupTransform("/fcu/base_link", "/breadcrumb/goal", ros::Time(0), transformGoalBody);
+		}
+
+		catch (tf::TransformException ex) {
+			ROS_ERROR( "%s",ex.what() );
+			ros::Duration( 1.0 ).sleep();
+			sendMovement = false;
+		}
+
+		geometry_msgs::Pose currentGoalBody;
+		tf::poseTFToMsg(transformGoalBody, currentGoalBody);
+
+		//TODO: TF stuff would probably go here
 
 		//currentGoal.position.x = 0.0;
 		//currentGoal.position.y = 0.0;
@@ -944,18 +943,28 @@ int main(int argc, char **argv)
 			outputPosition.pose = currentGoal;
 
 			//Velocity
-			if( sendVelocity || sendAcceleration ) {	// Omly bother to calculate if the requested
-				outputVelocity.twist.linear.x = pos_x_pid.step(currentGoal.position.x, currentPose.pose.position.x);
-				outputVelocity.twist.linear.y = pos_y_pid.step(currentGoal.position.y, currentPose.pose.position.y);
-				outputVelocity.twist.linear.z = pos_z_pid.step(currentGoal.position.z, currentPose.pose.position.z);
-				outputVelocity.twist.angular.z = ang_h_pid.step(toEuler( currentGoal.orientation ).z, toEuler( currentPose.pose.orientation ).z);
-			}
+			if( sendVelocity ) {	// Only bother to calculate if the requested
+				//WorldFrame
+				//outputVelocity.twist.linear.x = pos_x_pid.step(currentGoal.position.x, currentPose.pose.position.x);
+				//outputVelocity.twist.linear.y = pos_y_pid.step(currentGoal.position.y, currentPose.pose.position.y);
+				//outputVelocity.twist.linear.z = pos_z_pid.step(currentGoal.position.z, currentPose.pose.position.z);
 
-			//Acceleration
-			if( sendAcceleration ) {	// Omly bother to calculate if the requested
-				outputAcceleration.vector.x = vel_x_pid.step(outputVelocity.twist.linear.x, currentVelocity.linear.x);
-				outputAcceleration.vector.y = vel_y_pid.step(outputVelocity.twist.linear.y, currentVelocity.linear.y);
-				outputAcceleration.vector.z = vel_z_pid.step(outputVelocity.twist.linear.z, currentVelocity.linear.z);
+				//Body Frame
+				outputVelocity.twist.linear.x = pos_x_pid.step(currentGoalBody.position.x, 0.0);
+				outputVelocity.twist.linear.y = pos_y_pid.step(currentGoalBody.position.y, 0.0);
+				outputVelocity.twist.linear.z = pos_z_pid.step(currentGoalBody.position.z, 0.0);
+
+				double goalHeading = toEuler( currentGoal.orientation ).z;
+				double currentHeading = toEuler( currentPose.pose.orientation ).z;
+
+				if( ( goalHeading - currentHeading ) < -M_PI )
+					goalHeading += 2 * M_PI;
+
+				if( ( goalHeading - currentHeading ) > M_PI )
+					goalHeading -= 2 * M_PI;
+
+				outputVelocity.twist.angular.z = ang_h_pid.step( goalHeading, currentHeading);
+				//outputVelocity.twist.angular.z = ang_h_pid.step(0.0, toEuler( currentPose.pose.orientation ).z);
 			}
 
 			//TODO: Heading?
@@ -985,11 +994,6 @@ int main(int argc, char **argv)
 			outputVelocity.twist.linear.y = 0.0;
 			outputVelocity.twist.linear.z = 0.0;
 			outputVelocity.twist.angular.z = 0.0;
-
-			//Zero out acceleration
-			outputAcceleration.vector.x = 0.0;
-			outputAcceleration.vector.y = 0.0;
-			outputAcceleration.vector.z = 0.0;
 		}
 
 		//Publish Velocity Setpoint
@@ -997,14 +1001,33 @@ int main(int argc, char **argv)
 
 
 		//Publish Data //================================================================
+
 		pos_pub.publish( outputPosition );
 
-		if( sendVelocity )
+		//TODO: USE TF (and make the body frame for position as well?)
+		if( sendVelocity ) {
+
+			//ROS_INFO( "Goal Velocity (B): [%0.2f, %0.2f, %0.2f; %0.2f]", outputVelocity.twist.linear.x, outputVelocity.twist.linear.y, outputVelocity.twist.linear.z, outputVelocity.twist.angular.z );
+			/*
+			if( velocityFrame == VEL_FRAME_BODY ) {
+				double heading_rot = -toEuler(currentPose.pose.orientation).z;
+				tf::Quaternion rot;
+				rot.setRPY(0.0, 0.0, heading_rot);
+				tf::Quaternion p(outputVelocity.twist.linear.x, outputVelocity.twist.linear.y, outputVelocity.twist.linear.z, 0.0);
+				tf::Quaternion pBody;
+
+				pBody = ( rot * p ) * rot.inverse();
+
+				outputVelocity.twist.linear.x = pBody.getX();
+				outputVelocity.twist.linear.y = pBody.getY();
+				outputVelocity.twist.linear.z = pBody.getZ();
+				ROS_INFO( "Goal Velocity (B): [%0.2f, %0.2f, %0.2f; %0.2f]", outputVelocity.twist.linear.x, outputVelocity.twist.linear.y, outputVelocity.twist.linear.z, outputVelocity.twist.angular.z );
+			}
+
+			ROS_INFO( "-----------------------------------------------" );
+			*/
 			vel_pub.publish( outputVelocity );
-
-		if( sendAcceleration )
-			acc_pub.publish( outputAcceleration );
-
+		}
 		//Sleep //================================================================
 		rate.sleep();
 		ros::spinOnce();

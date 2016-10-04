@@ -8,6 +8,8 @@ system:
   #Timeout for the contact with the mav in seconds
   state_timeout: 5.0
   pos_timeout: 0.2
+  #Frame of reference to output velocity goals
+  vel_frame: "body"
 
 # Flight Presets
 guidance:
@@ -23,7 +25,7 @@ guidance:
 pos_xy_pid:
   p: 0.6
   i: 0.0
-  d: 0.1
+  d: 0.01
   min: -1.0
   max: 1.0
 
@@ -35,29 +37,13 @@ pos_z_pid:
   min: -0.5
   max: 1.0
 
-# Horizontal Velocity Controller
-vel_xy_pid:
-  p: 0.2
-  i: 0.1
-  d: 0.005
-  min: -0.1
-  max: 0.1
-
-# Vertical Velocity Controller
-vel_z_pid:
-  p: 0.1
-  i: 0.15
-  d: 0.0
-  min: -0.5
-  max: 0.5
-
 # Heading Rate Controller
 h_pid:
   p: 0.5
   i: 0.0
   d: 0.05
-  min: -1.57
-  max: 1.57
+  min: -0.8 #radians per second
+  max: 0.8  #radians per second
 
 
 #	P		I		D		Max		Output
