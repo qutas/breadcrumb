@@ -362,7 +362,7 @@ int main(int argc, char **argv)
 	//================================//
 	// Load Parameters                //
 	//================================//
-
+	//TODO: TF topic names
 	//Input/Output //================================================================
 	ROS_INFO("[Input & Output Topics]");
 
@@ -895,8 +895,6 @@ int main(int argc, char **argv)
 
 
 		//Generate Commands //================================================================
-		//outputTwist.header.stamp = ros::Time::now();
-		//outputTarget.header.stamp = ros::Time::now();
 		ros::Time timestamp = ros::Time::now();
 
 		outputPosition.header.stamp = timestamp;
@@ -922,22 +920,7 @@ int main(int argc, char **argv)
 		geometry_msgs::Pose currentGoalBody;
 		tf::poseTFToMsg(transformGoalBody, currentGoalBody);
 
-		//TODO: TF stuff would probably go here
-
-		//currentGoal.position.x = 0.0;
-		//currentGoal.position.y = 0.0;
-		//currentGoal.position.z = 1.0;
-
 		if( sendMovement ) {
-			/*
-			//Linear Controller
-			outputTwist.twist.linear.x = pos_x_pid.step(currentGoal.position.x, currentPose.pose.position.x);
-			outputTwist.twist.linear.y = pos_x_pid.step(currentGoal.position.y, currentPose.pose.position.y);
-			outputTwist.twist.linear.z = pos_x_pid.step(currentGoal.position.z, currentPose.pose.position.z);
-
-			//Angular Controller
-			outputTwist.twist.angular.z = vel_h_pid.step( toEuler( currentGoal.orientation ).z, toEuler( currentPose.pose.orientation ).z );
-			*/
 
 			//Position
 			outputPosition.pose = currentGoal;
@@ -964,28 +947,9 @@ int main(int argc, char **argv)
 					goalHeading -= 2 * M_PI;
 
 				outputVelocity.twist.angular.z = ang_h_pid.step( goalHeading, currentHeading);
-				//outputVelocity.twist.angular.z = ang_h_pid.step(0.0, toEuler( currentPose.pose.orientation ).z);
 			}
-
-			//TODO: Heading?
 		} else {
 			ROS_WARN_THROTTLE(MSG_FREQ, "[NAV] Commanding the mav to stay still..." );
-			/*
-			outputTwist.twist.linear.x = 0;
-			outputTwist.twist.linear.y = 0;
-			outputTwist.twist.linear.z = 0;
-			outputTwist.twist.angular.x = 0;
-			outputTwist.twist.angular.y = 0;
-			outputTwist.twist.angular.z = 0;
-			*/
-			/*
-			outputTarget.velocity.x = 0.0;
-			outputTarget.velocity.y = 0.0;
-			outputTarget.velocity.z = 0.0;
-			outputTarget.yaw_rate = 0.0;
-			*/
-			//Set zero for everything, just to be safe
-
 			//Zero out position
 			outputPosition.pose = currentGoal;
 
@@ -996,36 +960,12 @@ int main(int argc, char **argv)
 			outputVelocity.twist.angular.z = 0.0;
 		}
 
-		//Publish Velocity Setpoint
-		//vel_pub.publish( outputTwist );
-
-
 		//Publish Data //================================================================
-
 		pos_pub.publish( outputPosition );
 
-		//TODO: USE TF (and make the body frame for position as well?)
 		if( sendVelocity ) {
+			//TODO: global velocity
 
-			//ROS_INFO( "Goal Velocity (B): [%0.2f, %0.2f, %0.2f; %0.2f]", outputVelocity.twist.linear.x, outputVelocity.twist.linear.y, outputVelocity.twist.linear.z, outputVelocity.twist.angular.z );
-			/*
-			if( velocityFrame == VEL_FRAME_BODY ) {
-				double heading_rot = -toEuler(currentPose.pose.orientation).z;
-				tf::Quaternion rot;
-				rot.setRPY(0.0, 0.0, heading_rot);
-				tf::Quaternion p(outputVelocity.twist.linear.x, outputVelocity.twist.linear.y, outputVelocity.twist.linear.z, 0.0);
-				tf::Quaternion pBody;
-
-				pBody = ( rot * p ) * rot.inverse();
-
-				outputVelocity.twist.linear.x = pBody.getX();
-				outputVelocity.twist.linear.y = pBody.getY();
-				outputVelocity.twist.linear.z = pBody.getZ();
-				ROS_INFO( "Goal Velocity (B): [%0.2f, %0.2f, %0.2f; %0.2f]", outputVelocity.twist.linear.x, outputVelocity.twist.linear.y, outputVelocity.twist.linear.z, outputVelocity.twist.angular.z );
-			}
-
-			ROS_INFO( "-----------------------------------------------" );
-			*/
 			vel_pub.publish( outputVelocity );
 		}
 		//Sleep //================================================================
