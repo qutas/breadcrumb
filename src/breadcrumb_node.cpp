@@ -288,7 +288,8 @@ int main(int argc, char **argv)
 	std::string passbackMode = "AUTO.LOITER";
 
 	mavros_msgs::SetMode setModeOffB;
-	setModeOffB.request.custom_mode = "OFFBOARD";
+	//setModeOffB.request.custom_mode = "OFFBOARD";
+	setModeOffB.request.custom_mode = "STABILIZED";
 
 	mavros_msgs::SetMode setModeLand;
 	setModeLand.request.custom_mode = "AUTO.LAND";
@@ -664,9 +665,10 @@ int main(int argc, char **argv)
 			if( ( stateCounter >= MSG_STREAM_STATE ) && !inputStreamState )
 				inputStreamState = true;
 		}
-
+		
 		// If the system was running, but the mav has switched modes or disarmed
-		if( ( systemOperational ) && ( ( currentState.mode != "OFFBOARD" ) || ( !currentState.armed ) || !inputStreamState || !inputStreamPosition ) ) {
+		//if( ( systemOperational ) && ( ( currentState.mode != "OFFBOARD" ) || ( !currentState.armed ) || !inputStreamState || !inputStreamPosition ) ) {
+		if( ( systemOperational ) && ( ( currentState.mode != "STABILIZED" ) || ( !currentState.armed ) || !inputStreamState || !inputStreamPosition ) ) {
 			startSystem = false;
 			systemOperational = false;
 			sendMovement = false;
@@ -685,15 +687,18 @@ int main(int argc, char **argv)
 				if( startSystem ) {
 					//New request every 5 seconds
 					if( ( ros::Time::now() - lastRequest ) > ros::Duration( 5.0 ) ) {
-						if( currentState.mode != "OFFBOARD" ) {	//If the mav is currently not in OFFBOARD mode
-							ROS_INFO( "Requesting \"OFFBOARD\" mode [%s]", currentState.mode.c_str() );
+						//if( currentState.mode != "OFFBOARD" ) {	//If the mav is currently not in OFFBOARD mode
+						if( currentState.mode != "STABILIZED" ) {	//If the mav is currently not in OFFBOARD mode
+							//ROS_INFO( "Requesting \"OFFBOARD\" mode [%s]", currentState.mode.c_str() );
+							ROS_INFO( "Requesting \"STABILIZED\" mode [%s]", currentState.mode.c_str() );
 
 							if( set_mode_client.call(setModeOffB) && setModeOffB.response.success ) {
 								ROS_INFO( "[CMD] Offboard control enabled" );
 							}
 						}
 
-						if( ( currentState.mode == "OFFBOARD" ) && ( !currentState.armed ) ) {
+						//if( ( currentState.mode == "OFFBOARD" ) && ( !currentState.armed ) ) {
+						if( ( currentState.mode == "STABILIZED" ) && ( !currentState.armed ) ) {
 							/*
 							ROS_INFO( "[CMD] Attempting to arm mav" );
 
@@ -710,7 +715,8 @@ int main(int argc, char **argv)
 					}
 
 					//If the mav is in the right mode, and is armed
-					if( ( currentState.mode == "OFFBOARD" ) && ( currentState.armed ) ) {
+					//if( ( currentState.mode == "OFFBOARD" ) && ( currentState.armed ) ) {
+					if( ( currentState.mode == "STABILIZED" ) && ( currentState.armed ) ) {
 						//Set the current goal to hold position until the handover is complete (in case this is mid flight)
 						currentGoal = currentPose.pose;
 						floorHeight = currentPose.pose.position.z;
@@ -908,7 +914,7 @@ int main(int argc, char **argv)
 
 		try {
 			//Get the latest pose of the fcu in the world
-			tfln->lookupTransform("/fcu/base_link", "/breadcrumb/goal", ros::Time(0), transformGoalBody);
+			tfln->lookupTransform("/uav/hdg_link", "/breadcrumb/goal", ros::Time(0), transformGoalBody);
 		}
 
 		catch (tf::TransformException ex) {
