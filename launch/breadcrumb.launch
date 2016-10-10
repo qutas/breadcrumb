@@ -1,7 +1,7 @@
 <launch>
 	<node pkg="breadcrumb" type="breadcrumb_node" name="breadcrumb" clear_params="true" output="screen">
 		<!-- Connection Parameters -->
-		<param name="position_input" value="/mavros/local_position/pose" type="str"/>
+		<param name="position_input" value="/vicon/cicada/cicada" type="str"/>
 
 		<param name="position_goal" value="goal/position" type="str" />
 		<param name="velocity_goal" value="/mavel/cmd_vel" type="str" />

@@ -143,8 +143,18 @@ void state_cb(const mavros_msgs::State::ConstPtr& msg) {
 	currentState = *msg;
 }
 
-void local_pos_cb(const geometry_msgs::PoseStamped::ConstPtr& msg) {
-	currentPose = *msg;
+void local_pos_cb(const geometry_msgs::TransformStamped::ConstPtr& msg) {
+	currentPose.header = msg->header;
+	currentPose.header.frame_id = msg->child_frame_id;
+	
+	currentPose.pose.position.x = msg->transform.translation.x;
+	currentPose.pose.position.y = msg->transform.translation.y;
+	currentPose.pose.position.z = msg->transform.translation.z;
+	
+	currentPose.pose.orientation.w = msg->transform.rotation.w;
+	currentPose.pose.orientation.x = msg->transform.rotation.x;
+	currentPose.pose.orientation.y = msg->transform.rotation.y;
+	currentPose.pose.orientation.z = msg->transform.rotation.z;
 
 	/*
 	//Create a transform for the "base link" of the mav (One that has no roll or pitch)
@@ -524,7 +534,7 @@ int main(int argc, char **argv)
 	//Subscribers
 	ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
 		( "/mavros/state", 10, state_cb);
-	ros::Subscriber local_pos_sub = nh.subscribe<geometry_msgs::PoseStamped>
+	ros::Subscriber local_pos_sub = nh.subscribe<geometry_msgs::TransformStamped>
 		(positionInput, 10, local_pos_cb);
 	ros::Subscriber waypoint_sub = nh.subscribe<geometry_msgs::PoseArray>
 		(waypointInput, 10, waypoint_cb);
