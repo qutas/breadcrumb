@@ -97,12 +97,9 @@ mavros_msgs::State currentState;
 
 //geometry_msgs::PoseStamped outputTwist;
 geometry_msgs::TwistStamped outputVelocity;
-geometry_msgs::PoseStamped outputPosition;
 
-geometry_msgs::PoseStamped currentPose;
 geometry_msgs::Pose navGoalHome;
 geometry_msgs::Pose navGoalTakeoff;
-geometry_msgs::Pose currentGoal;
 
 //geometry_msgs::TwistStamped outputTwist;	//Should have a default of 0 for all velocities
 geometry_msgs::PoseStamped outputPose;	//Should have a default of 0 for all velocities
@@ -122,10 +119,6 @@ bool changedMode = false;	//Should be set on each mode change to allow gracefull
 bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 ros::Time lastRequest = ros::Time(0);
-
-//TF
-tf::TransformBroadcaster* tfbr;
-tf::TransformListener* tfln;
 
 /*
 Services:
