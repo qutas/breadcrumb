@@ -1,0 +1,343 @@
+#!/usr/bin/env python2
+
+import Tkinter as tk
+from Tkinter import *
+import time
+import subprocess
+import matplotlib
+import collections
+from numpy import arange, sin, pi
+matplotlib.use('TkAgg')
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from matplotlib.figure import Figure
+
+#import rospy
+#from breadcrumb.srv import *
+#from mavros_msgs.srv import *
+
+#from matplotlib.backend_bases import key_press_handler
+#========================Waypoint Planner========================#
+class Planner:
+	def __init__(self, master):
+		#========Frame Setup========#
+		self.master = master
+		self.frame = tk.Frame(self.master)
+		self.master.title("Waypoint Planner")
+		self.frame.grid(column=0, row=0, sticky=(N, W, E, S), padx=10, pady=10)
+		self.frame.columnconfigure(0, weight=1)
+		self.frame.rowconfigure(0, weight=1)
+		vcmd = (self.master.register(self.validate), '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
+		#========Subframe Setup========#
+		self.frame.inputs = tk.Frame(self.master)
+		self.frame.graph = tk.Frame(self.master)
+		self.frame.inputs.grid(column=1, row=1, sticky=(N, W, E, S), padx=10, pady=10)
+		self.frame.inputs.columnconfigure(0, weight=1)
+		self.frame.inputs.rowconfigure(0, weight=1)
+		self.frame.graph.grid(column=2, row=1, sticky=(N, W, E, S), padx=10, pady=10)
+		self.frame.graph.columnconfigure(0, weight=1)
+		self.frame.graph.rowconfigure(0, weight=1)
+		#========User Inputs========#
+		self.listbox = Listbox(self.frame.inputs, height=30, width=6)
+		self.listbox.grid(column=1, row=1, columnspan=4,sticky=(W, E))
+		#self.scrollbar = Scrollbar(self.frame.inputs)
+		#self.scrollbar.grid(column=6, row=1, sticky=N+S+E)
+		#self.scrollbar.config(command=self.msgbox.yview)
+		#self.msgbox.config(yscrollcommand=self.scrollbar.set)
+		#---------------------------#
+		self.value_wp_x = StringVar()
+		self.value_wp_x.set("0")
+		self.value_wp_y = StringVar()
+		self.value_wp_y.set("0")
+		self.value_wp_z = StringVar()
+		self.value_wp_z.set("1")
+		self.value_wp_h = StringVar()
+		self.value_wp_h.set("0")
+		self.label_wp_x = tk.Label(self.frame.inputs, text="X")
+		self.label_wp_x.grid(column=1, row=2, sticky=(S))
+		self.label_wp_y = tk.Label(self.frame.inputs, text="Y")
+		self.label_wp_y.grid(column=2, row=2, sticky=(S))
+		self.label_wp_z = tk.Label(self.frame.inputs, text="Z")
+		self.label_wp_z.grid(column=3, row=2, sticky=(S))
+		self.label_wp_h = tk.Label(self.frame.inputs, text="HDG")
+		self.label_wp_h.grid(column=4, row=2, sticky=(S))
+		self.entry_wp_x = tk.Entry(self.frame.inputs, width=4, textvariable=self.value_wp_x, justify="right", validate='key', validatecommand=vcmd)
+		self.entry_wp_x.grid(column=1, row=3, sticky=(W, E))
+		self.entry_wp_y = tk.Entry(self.frame.inputs, width=4, textvariable=self.value_wp_y, justify="right", validate='key', validatecommand=vcmd)
+		self.entry_wp_y.grid(column=2, row=3, sticky=(W, E))
+		self.entry_wp_z = tk.Entry(self.frame.inputs, width=4, textvariable=self.value_wp_z, justify="right", validate='key', validatecommand=vcmd)
+		self.entry_wp_z.grid(column=3, row=3, sticky=(W, E))
+		self.entry_wp_h = tk.Entry(self.frame.inputs, width=4, textvariable=self.value_wp_h, justify="right", validate='key', validatecommand=vcmd)
+		self.entry_wp_h.grid(column=4, row=3, sticky=(W, E))
+		#---------------------------#
+		self.button_insert = tk.Button(self.frame.inputs, text="Insert", command=self.cmd_wp_insert)
+		self.button_insert.grid(column=1, row=4, columnspan=2, sticky=N+S+E+W)
+		self.button_remove = tk.Button(self.frame.inputs, text="Remove", command=self.cmd_wp_remove)
+		self.button_remove.grid(column=3, row=4, columnspan=2, sticky=N+S+E+W)
+		self.button_up = tk.Button(self.frame.inputs, text="Up", command=self.cmd_wp_move_up)
+		self.button_up.grid(column=1, row=5, columnspan=2, sticky=N+S+E+W)
+		self.button_down = tk.Button(self.frame.inputs, text="Down", command=self.cmd_wp_move_down)
+		self.button_down.grid(column=3, row=5, columnspan=2, sticky=N+S+E+W)
+		self.button_load = tk.Button(self.frame.inputs, text="Import", command=self.cmd_empty)
+		self.button_load.grid(column=1, row=6, columnspan=2, sticky=N+S+E+W)
+		self.button_save = tk.Button(self.frame.inputs, text="Export", command=self.cmd_empty)
+		self.button_save.grid(column=3, row=6, columnspan=2, sticky=N+S+E+W)
+		self.button_exit = tk.Button(self.frame.inputs, text="Exit", command=self.close_window)
+		self.button_exit.grid(column=1, row=7, columnspan=4, sticky=N+S+E+W)
+		#---------------------------#
+		for child in self.frame.inputs.winfo_children():
+			child.grid_configure(padx=5, pady=5)
+		#---------------------------#
+		#self.value_wp_list = [[1,2,3,4,5,6],[6,5,4,3,2,1]]
+		#for j in range(len(self.value_wp_list)):
+		#	buf = "WP %d: %d; %d; %d; %d; %d;" % (self.value_wp_list[j][0],self.value_wp_list[j][1],self.value_wp_list[j][2],self.value_wp_list[j][3],self.value_wp_list[j][4],self.value_wp_list[j][5])
+		#	self.listbox.insert(END, buf)
+		#	print(buf)
+		#========Create Figure========#
+		self.figure = collections.namedtuple("figure", [])
+		self.figure.f = Figure(figsize=(6, 6), dpi=100)
+		self.figure.a = self.figure.f.add_subplot(111)
+		#========Figure Plot========#
+		self.figure.t = arange(0.0, 3.0, 0.01)
+		self.figure.s = sin(2*pi*self.figure.t)
+		#self.figure.a.plot(self.figure.t, self.figure.s)
+		self.figure.a.plot([-2,-2,2,2,-2],[-2,2,2,-2,-2],"g")
+		self.figure.a.axhline(linewidth=2, color="r")        # inc. width of x-axis and color it green
+		self.figure.a.axvline(linewidth=2, color="b")        # inc. width of y-axis and color it red
+		self.figure.a.set_xlim([-2.4,2.4])
+		self.figure.a.set_ylim([-2.4,2.4])
+		self.figure.a.grid(True, which="major", linestyle="-", alpha=0.5)
+		self.figure.a.grid(True, which="minor", linestyle="-", alpha=0.2)
+		self.figure.a.minorticks_on()
+		self.figure.canvas = FigureCanvasTkAgg(self.figure.f, self.frame.graph)
+		self.figure.canvas.show()
+		self.figure.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+	#================Helper Functions================#
+	def close_window(self):
+		self.master.destroy()
+	def cmd_empty(self):
+		print("Error")
+	def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
+		if(action=='1'):
+			if text in '0123456789.-+':
+				try:
+					float(value_if_allowed)
+					return True
+				except ValueError:
+					return False
+			else:
+				return False
+		else:
+			return True
+	#=================Input Functions================#
+	def cmd_wp_move_up(self):
+		print("Shifting WP upwards")
+		ind = self.listbox.curselection()
+		if len(ind) > 0:
+			if ind[0] > 0:
+				tmp = self.listbox.get(ind[0]-1)
+				self.listbox.delete(ind[0]-1)
+				self.listbox.insert(ind[0]+1,tmp)
+	def cmd_wp_move_down(self):
+		print("Shifting WP downwards")
+		ind = self.listbox.curselection()
+		if len(ind) > 0:
+			if ind[0] < self.listbox.size()-1:
+				tmp = self.listbox.get(ind[0]+1)
+				self.listbox.delete(ind[0]+1)
+				self.listbox.insert(ind[0],tmp)
+	def cmd_wp_insert(self):
+		print("Inserting WP")
+		buf = "%.2f; %.2f; %.2f; %.2f;" % (float(self.value_wp_x.get()),float(self.value_wp_y.get()),float(self.value_wp_z.get()),float(self.value_wp_h.get()))
+		ind = self.listbox.curselection()
+		if len(ind) > 0:
+			self.listbox.insert(ind[0]+1, buf)
+		else:
+			self.listbox.insert(END, buf)
+	def cmd_wp_remove(self):
+		ind = self.listbox.curselection()
+		if len(ind) > 0:
+			print("Deleting WP")
+			self.listbox.delete(ANCHOR)
+			self.listbox.selection_set(ind[0])
+#==========================Control Panel=========================#
+class ControlPanel:
+	def __init__(self, master):
+		#========Frame Setup========#
+		self.master = master
+		self.frame = tk.Frame(self.master)
+		self.master.title("Ground Control Station")
+		self.frame.grid(column=0, row=0, sticky=(N, W, E, S), padx=10, pady=10)
+		self.frame.columnconfigure(0, weight=1)
+		self.frame.rowconfigure(0, weight=1)
+		#========Message Box========#
+		#Should probably have another message box subscribed to Mav Status
+		self.msgbox = Text(self.frame, height=4, width=5, state=DISABLED)
+		self.msgbox.grid(column=1, row=6, columnspan=5,sticky=(W, E))
+		self.scrollbar = Scrollbar(self.frame)
+		self.scrollbar.grid(column=5, row=6, sticky=N+S+E)
+		self.scrollbar.config(command=self.msgbox.yview)
+		self.msgbox.config(yscrollcommand=self.scrollbar.set)
+		#========Main Mav Commands========#
+		self.value_selected_mode = StringVar()
+		self.value_selected_mode.set("PRECONNECT")
+
+		self.button_disarm = tk.Button(self.frame, text="Disarm", command=self.cmd_mav_disarm)
+		self.button_disarm.grid(column=1, row=1, sticky=N+S+E+W)
+		self.button_arm = tk.Button(self.frame, text="Arm", command=self.cmd_mav_arm)
+		self.button_arm.grid(column=2, row=1, sticky=N+S+E+W)
+		self.button_takeoff = tk.Button(self.frame, text="Take Off", command=self.cmd_mav_takeoff)
+		self.button_takeoff.grid(column=3, row=1, sticky=N+S+E+W)
+		self.button_home = tk.Button(self.frame, text="Return\nHome", command=self.cmd_guide_home)
+		self.button_home.grid(column=4, row=1, sticky=N+S+E+W)
+		self.button_land = tk.Button(self.frame, text="Land", command=self.cmd_mav_land)
+		self.button_land.grid(column=5, row=1, sticky=N+S+E+W)
+		self.button_set_mode = tk.Button(self.frame, text="Set Mode", command=self.cmd_mav_set_mode)
+		self.button_set_mode.grid(column=5, row=3, sticky=N+S+E+W)
+		self.drop_mode_select = tk.OptionMenu(self.frame, self.value_selected_mode, "PRECONNECT", "SLEEP", "TAKEOFF", "MISSION", "PAUSE", "HOME", "LAND", "HALT")
+		self.drop_mode_select.grid(column=6, row=3, sticky=N+S+E+W)
+		self.button_exit = tk.Button(self.frame, text="Exit", command=self.program_exit)
+		self.button_exit.grid(column=6, row=6, sticky=N+S+E+W)
+		#========Waypoint Commands========#
+		self.value_wp_toggle_stop = True
+		self.value_wp_toggle_pause = False
+
+		self.button_wp_select = tk.Button(self.frame, text="Waypoint\nPlanner", command=self.cmd_wp_plan)
+		self.button_wp_select.grid(column=6, row=1, sticky=N+S+E+W)
+		self.label_loaded_wp = tk.Label(self.frame, text="Current: None")
+		self.label_loaded_wp.grid(column=2, row=4, sticky=(N+S+W), columnspan=3)
+		self.button_wp_load = tk.Button(self.frame, text="Load Path", command=self.cmd_wp_load)
+		self.button_wp_load.grid(column=1, row=4, sticky=N+S+E+W)
+		self.button_wp_toggle_pause = tk.Button(self.frame, text="Pause", command=self.cmd_wp_toggle_pause, state=DISABLED)
+		self.button_wp_toggle_pause.grid(column=6, row=4, sticky=N+S+E+W)
+		self.button_wp_toggle_stop = tk.Button(self.frame, text="Start Mission", command=self.cmd_wp_toggle_stop)
+		self.button_wp_toggle_stop.grid(column=5, row=4, sticky=N+S+E+W)
+		#========Goto & Home========#
+		self.value_goto_x = StringVar()
+		self.value_goto_x.set("0")
+		self.value_goto_y = StringVar()
+		self.value_goto_y.set("0")
+		self.value_goto_z = StringVar()
+		self.value_goto_z.set("1")
+		self.label_goto_x = tk.Label(self.frame, text="X")
+		self.label_goto_x.grid(column=2, row=2, sticky=(S))
+		self.label_goto_y = tk.Label(self.frame, text="Y")
+		self.label_goto_y.grid(column=3, row=2, sticky=(S))
+		self.label_goto_z = tk.Label(self.frame, text="Z")
+		self.label_goto_z.grid(column=4, row=2, sticky=(S))
+		self.button_goto = tk.Button(self.frame, text="Go To", command=self.cmd_guide_goto)
+		self.button_goto.grid(column=1, row=3, sticky=(N+S+E+W))
+		self.entry_goto_x = tk.Entry(self.frame, width=4, textvariable=self.value_goto_x, justify="right")
+		self.entry_goto_x.grid(column=2, row=3, sticky=(W, E))
+		self.entry_goto_y = tk.Entry(self.frame, width=4, textvariable=self.value_goto_y, justify="right")
+		self.entry_goto_y.grid(column=3, row=3, sticky=(W, E))
+		self.entry_goto_z = tk.Entry(self.frame, width=4, textvariable=self.value_goto_z, justify="right")
+		self.entry_goto_z.grid(column=4, row=3, sticky=(W, E))
+		#==Neaten Frame==#
+		for child in self.frame.winfo_children():
+			child.grid_configure(padx=5, pady=5)
+	#=======Helper Functions=========#
+	def print_msg(self,msg):
+		print(msg)
+		self.msgbox.config(state=NORMAL)
+		self.msgbox.insert(END, "\n"+msg)
+		self.msgbox.see(END)
+		self.msgbox.config(state=DISABLED)
+	def validate(self, action, index, value_if_allowed, prior_value, text, validation_type, trigger_type, widget_name):
+		if(action=='1'):
+			if text in '0123456789.-+':
+				try:
+					float(value_if_allowed)
+					return True
+				except ValueError:
+					return False
+			else:
+				return False
+		else:
+			return True
+	#=======Mav Functions================#
+	def cmd_mav_disarm(self):	# Issues command to disarm the UAV
+		self.print_msg("Test: Disarm")
+		#TODO: Disarm through mavros service
+	def cmd_mav_arm(self):	# Issues command to arm the UAV
+		self.print_msg("Test: Arm")
+		#TODO: Arm through mavros service
+	def cmd_mav_takeoff(self):	# Issues command to takeoff the UAV
+		self.print_msg("Attempting to switch to mode: TAKEOFF")
+		self.cmd_set_mode("TAKEOFF")
+	def cmd_mav_land(self):	# Issues command to land the UAV
+		self.print_msg("Attempting to switch to mode: LAND")
+		self.cmd_set_mode("LAND")
+	def cmd_mav_set_mode(self):	# Issues command to land the UAV
+		self.print_msg("Attempting to switch to mode: %s"%self.value_selected_mode.get())
+		self.cmd_set_mode(self.value_selected_mode.get())
+	def program_exit(self):	# Handles the user input for exiting the program
+		self.master.quit()
+		self.master.destroy()
+	#================Waypoint Functions================#
+	def cmd_guide_home(self):	# Issues the home command based off of the values in the entry boxes
+		self.print_msg("Attempting to switch to mode: HOME")
+		self.cmd_set_mode("HOME")
+	def cmd_guide_goto(self):	# Issues the goto command based off of the values in the entry boxes
+		self.print_msg("Test: GoTo")
+		#TODO: Publish single waypoint
+		#TODO: Set mode MISSION
+	def cmd_wp_plan(self):	# Handles user input for the waypoint planner
+		self.print_msg("Test: Plan Waypoints")
+		self.newWindow = tk.Toplevel(self.master)
+		self.app = Planner(self.newWindow)	# Opens the waypoint planner app in a new window
+	def cmd_wp_load(self):	# Handles the user input for loading a new waypoint script
+		self.print_msg("Test: Load Waypoints")
+		#TODO: Remember to update the text as well
+	def cmd_wp_toggle_pause(self):	# Handles user input for the pause/resume command
+		self.print_msg("Test: Toggle Pause Waypoints")
+		if self.value_wp_toggle_pause == False:
+			self.value_wp_toggle_pause = True
+			self.button_wp_toggle_pause.config(text="Resume")
+			self.cmd_wp_pause() #Issues the Pause command
+		else:
+			self.value_wp_toggle_pause = False
+			self.button_wp_toggle_pause.config(text="Pause")
+			self.cmd_wp_resume()	# Issue the Resume command
+	def cmd_wp_pause(self):	# Handles actual commands for the Pause command
+		self.print_msg("Attempting to switch to mode: PAUSE")
+		self.cmd_set_mode("PAUSE")
+	def cmd_wp_resume(self):	# Handles actual commands for the Resume command
+		self.cmd_wp_start()	#Would do the same thing as start mission
+	def cmd_wp_toggle_stop(self):	# Handles user input for the start/stop command
+		self.print_msg("Test: Toggle Stop Waypoints")
+		if self.value_wp_toggle_stop == False:
+			self.value_wp_toggle_stop = True
+			self.button_wp_toggle_stop.config(text="Start Mission")
+			self.value_wp_toggle_pause = False	# Reset and disable the Pause command
+			self.button_wp_toggle_pause.config(text="Pause")
+			self.button_wp_toggle_pause.config(state=DISABLED)
+			self.cmd_wp_stop()	# Issue the Stop command
+		else:
+			self.value_wp_toggle_stop = False
+			self.button_wp_toggle_stop.config(text="Stop Mission")
+			self.value_wp_toggle_pause = False
+			self.button_wp_toggle_pause.config(text="Pause")
+			self.button_wp_toggle_pause.config(state=NORMAL)
+			self.cmd_wp_start()
+	def cmd_wp_stop(self):	# Handles actual commands for the Stop command
+		self.print_msg("Attempting to switch to mode: SLEEP")
+		self.cmd_set_mode("SLEEP")
+	def cmd_wp_start(self):	# Handles actual commands for the Start command
+		self.print_msg("Attempting to switch to mode: MISSION")
+		self.cmd_set_mode("MISSION")
+	def cmd_set_mode(self, req_str):	# Processes the passed mode and requests it via service
+		self.print_msg("Test: Request Mode [%s]"%req_str)
+		#TODO: Same as in commander
+	def cmd_wp_button(self):	# Handles actual commands for the SPARE command
+		self.print_msg("Test: UNDEFINED")
+#=========================Validate Inputs========================#
+#class ValidateFloat:
+
+#==============================Main==============================#
+def main():
+	root = tk.Tk()
+	app = ControlPanel(root)
+	root.mainloop()
+
+if __name__ == '__main__':
+	main()
