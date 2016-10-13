@@ -49,6 +49,7 @@ enum navModes {
 	NAV_MODE_TAKEOFF,		// Set the current goal straight above the mav at takeoff height, then fly to home
 	NAV_MODE_MISSION,		// Follow waypoint mission
 	NAV_MODE_PAUSE,			// Waypoints are put on hold to stay at current location (could modify waypoints here)
+	NAV_MODE_EXTERNAL,		// If the is has been a recent message, will set that as the current target (timeout to sleep)
 	NAV_MODE_HOME,			// Returns to a defined home location
 	NAV_MODE_LAND,			// Land at current position (then rely on the auto disarm)
 	NAV_MODE_HALT			// Stop breadcrumb, but leave the UAV in a pre-set mode (Loiter if not specified)
@@ -60,6 +61,7 @@ const std::vector<std::string> modeNames = {
 	"TAKEOFF",
 	"MISSION",
 	"PAUSE",
+	"EXTERNAL",
 	"HOME",
 	"LAND",
 	"HALT"
@@ -100,6 +102,7 @@ geometry_msgs::TwistStamped outputVelocity;
 geometry_msgs::PoseStamped outputPosition;
 
 geometry_msgs::PoseStamped currentPose;
+geometry_msgs::PoseStamped externalPose;
 geometry_msgs::Pose navGoalHome;
 geometry_msgs::Pose navGoalTakeoff;
 geometry_msgs::Pose currentGoal;

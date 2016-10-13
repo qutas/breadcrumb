@@ -34,12 +34,17 @@ def do_set_mode(args):
 		m = SetMode._request_class.NAV_MODE_MISSION
 	elif args.mode == "PAUSE":
 		m = SetMode._request_class.NAV_MODE_PAUSE
+	elif args.mode == "EXTERNAL":
+		m = SetMode._request_class.NAV_MODE_EXTERNAL
 	elif args.mode == "HOME":
 		m = SetMode._request_class.NAV_MODE_HOME
 	elif args.mode == "LAND":
 		m = SetMode._request_class.NAV_MODE_LAND
 	elif args.mode == "HALT":
 		m = SetMode._request_class.NAV_MODE_HALT
+	else:
+		print "Unknown mode: %s"%args.mode
+		return 0
 
 	try:
 		req = rospy.ServiceProxy("/breadcrumb/set_mode", SetMode)

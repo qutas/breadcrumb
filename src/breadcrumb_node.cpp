@@ -59,7 +59,12 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 				changedMode = true;
 				res.success = true;
 				waypointCounter = -1;
-				ROS_WARN( "[NAV] Halting takeoff, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+				ROS_WARN( "[NAV] Halting mission, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+			} else if( req.mode_req == NAV_MODE_PAUSE ) {
+				navCurrentMode = req.mode_req;
+				changedMode = true;
+				res.success = true;
+				ROS_WARN( "[NAV] Pausing mission, switching to: %s", modeNames.at( navCurrentMode ).c_str());
 			} else {
 				ROS_ERROR( "[NAV] Mission in progress, refusing mode switch to: %s", modeNames.at( req.mode_req ).c_str());
 			} //TODO: Should always be able to quit mission
@@ -67,11 +72,39 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 			break;
 		//Allow swtich to SLEEP, MISSION, HOME, LAND
 		case NAV_MODE_PAUSE:
-			ROS_ERROR("TODO!");
+			if( ( req.mode_req == NAV_MODE_SLEEP ) || ( req.mode_req == NAV_MODE_LAND ) ) {
+				navCurrentMode = req.mode_req;
+				changedMode = true;
+				res.success = true;
+				waypointCounter = -1;
+				ROS_WARN( "[NAV] Halting mission, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+			} else if( req.mode_req == NAV_MODE_MISSION ) {
+				navCurrentMode = req.mode_req;
+				res.success = true;
+				currentGoal = waypointList.at(waypointCounter);
+				ROS_WARN( "[NAV] Resuming mission, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+			} else {
+				ROS_ERROR( "[NAV] Mission in progress, refusing mode switch to: %s", modeNames.at( req.mode_req ).c_str());
+			}
+			
+			break;
+		//Allow switch to SLEEP, MISSION, or LAND
+		case NAV_MODE_EXTERNAL:
+			navCurrentMode = req.mode_req;
+			changedMode = true;
+			res.success = true;
+
+			ROS_INFO( "[NAV] Cancelling external tracking, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+
 			break;
 		//Allow switch to SLEEP, MISSION, or LAND
 		case NAV_MODE_HOME:
-			ROS_ERROR("TODO!");
+			navCurrentMode = req.mode_req;
+			changedMode = true;
+			res.success = true;
+
+			ROS_INFO( "[NAV] Cancelling return to home, switching to: %s", modeNames.at( navCurrentMode ).c_str());
+
 			break;
 		//Only allow switch to SLEEP
 		case NAV_MODE_LAND:
@@ -91,8 +124,7 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 
 			break;
 		default:
-			ROS_ERROR( "[CMD] Mode was set to an invalid value [%d]", navCurrentMode);
-			terminate = true;
+			ROS_ERROR( "[CMD] Mode has no listed value [%d]", navCurrentMode);	//Will output what mode it was checking against
 
 			break;
 	}
@@ -186,6 +218,10 @@ void waypoint_cb(const geometry_msgs::PoseArray::ConstPtr& msg) {
 	ROS_INFO("Loaded in %i waypoints.", waypointList.size());
 }
 
+void ext_pos_cb(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+	externalPose = *msg;
+}
+
 geometry_msgs::Vector3 toEuler(geometry_msgs::Quaternion q) {
     geometry_msgs::Vector3 e;
 
@@ -258,6 +294,7 @@ int main(int argc, char **argv)
 	//==== Topics ====//
 	std::string positionInput = "reference/pose";
 	std::string waypointInput = "reference/wapoints";
+	std::string externalInput = "reference/external";
 
 	std::string positionOutputTopic = "goal/position_target";
 	std::string velocityOutputTopic = "goal/velocity_target";
@@ -386,6 +423,11 @@ int main(int argc, char **argv)
 		ROS_WARN( "No parameter set for \"waypoint_input\", using: %s", waypointInput.c_str() );
 	}
 	ROS_INFO( "Listening for waypoint input: %s", waypointInput.c_str() );
+	
+	if( !nh.getParam( "external_input", externalInput ) ) {
+		ROS_WARN( "No parameter set for \"external_input\", using: %s", externalInput.c_str() );
+	}
+	ROS_INFO( "Listening for external guidance: %s", externalInput.c_str() );
 
 	if( !nh.getParam( "reached_goal", waypointConfirm ) ) {
 		ROS_WARN( "No parameter set for \"reached_goal\", using: %s", waypointConfirm.c_str() );
@@ -538,6 +580,8 @@ int main(int argc, char **argv)
 		(positionInput, 10, local_pos_cb);
 	ros::Subscriber waypoint_sub = nh.subscribe<geometry_msgs::PoseArray>
 		(waypointInput, 10, waypoint_cb);
+	ros::Subscriber ext_pos_sub = nh.subscribe<geometry_msgs::PoseStamped>
+		(externalInput, 10, ext_pos_cb);
 
 	//Publishers
 	//ros::Publisher vel_pub = nh.advertise<mavros_msgs::PositionTarget>
@@ -738,7 +782,6 @@ int main(int argc, char **argv)
 							rot.y = 0;
 							currentGoal.orientation = toQuaternion( rot );
 
-
 							navGoalHome = currentGoal;
 							navGoalHome.position.z += navGoalTakeoffHeight;
 
@@ -838,8 +881,33 @@ int main(int argc, char **argv)
 				}
 
 				// TODO: Should use actionlib to do waypoints?
+				break;
 			case NAV_MODE_PAUSE:
-				// TODO: Need to have a remote mode change implemented
+				if( changedMode ) {
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
+					changedMode = false;
+					currentGoal = currentPose.pose;
+					ROS_INFO( "[NAV] Commanding to hold position..." );
+				}
+
+				ROS_INFO_THROTTLE(MSG_FREQ, "Mission paused, waiting for resume..." );
+				
+				break;
+			case NAV_MODE_EXTERNAL:
+				if( changedMode ) {
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
+					changedMode = false;
+					ROS_INFO( "[NAV] Commanding to follow external pose goal..." );
+				}
+				
+				if( 2.0 < ( ros::Time::now() - externalPose.header.stamp ).toSec() ) {
+					ROS_INFO( "[NAV] Rejecting external mode, no fresh external goal" );
+					changedMode = true;
+					navCurrentMode = NAV_MODE_SLEEP;
+				} else {
+					currentGoal = externalPose.pose;
+				}
+				
 				break;
 			case NAV_MODE_HOME:
 				if( changedMode ) {
@@ -871,6 +939,10 @@ int main(int argc, char **argv)
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
 					ROS_INFO_THROTTLE( 2.0, "Reached landing goal!" );
+					
+					changedMode = true;
+					navCurrentMode = NAV_MODE_HALT;
+					
 					/* TODO: Could be useful, but out of scope
 					ROS_WARN( "[CMD] Attempting to disarm mav" );
 					if( arming_client.call(disarm_cmd) && disarm_cmd.response.success ) {
