@@ -11,9 +11,9 @@ matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.figure import Figure
 
-#import rospy
-#from breadcrumb.srv import *
-#from mavros_msgs.srv import *
+import rospy
+from breadcrumb.srv import *
+from mavros_msgs.srv import CommandBool
 
 #from matplotlib.backend_bases import key_press_handler
 #========================Waypoint Planner========================#
@@ -256,11 +256,11 @@ class ControlPanel:
 			return True
 	#=======Mav Functions================#
 	def cmd_mav_disarm(self):	# Issues command to disarm the UAV
-		self.print_msg("Test: Disarm")
-		#TODO: Disarm through mavros service
+		self.print_msg("Sending Disarm request...")
+		self._arm(False)
 	def cmd_mav_arm(self):	# Issues command to arm the UAV
-		self.print_msg("Test: Arm")
-		#TODO: Arm through mavros service
+		self.print_msg("Sending Arm request...")
+		self._arm(True)
 	def cmd_mav_takeoff(self):	# Issues command to takeoff the UAV
 		self.print_msg("Attempting to switch to mode: TAKEOFF")
 		self.cmd_set_mode("TAKEOFF")
@@ -273,6 +273,24 @@ class ControlPanel:
 	def program_exit(self):	# Handles the user input for exiting the program
 		self.master.quit()
 		self.master.destroy()
+	def _arm(self,state):
+		try:
+			rospy.wait_for_service("/mavros/cmd/arming", timeout=1.0)
+
+			try:
+				req = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)
+				ret = req(state)
+			except rospy.ServiceException, e:
+				self.print_msg("Service call failed: %s"%e)
+
+			if ret.success:
+				self.print_msg("Arm/Disarm successfully called!")
+			else:
+				self.print_msg( "Failed to arm/disarm. Check mavros logs")
+
+			#return ret
+		except:
+			self.print_msg("ERROR: Service is not currently available!")
 	#================Waypoint Functions================#
 	def cmd_guide_home(self):	# Issues the home command based off of the values in the entry boxes
 		self.print_msg("Attempting to switch to mode: HOME")
@@ -327,7 +345,46 @@ class ControlPanel:
 		self.cmd_set_mode("MISSION")
 	def cmd_set_mode(self, req_str):	# Processes the passed mode and requests it via service
 		self.print_msg("Test: Request Mode [%s]"%req_str)
-		#TODO: Same as in commander
+		try:
+			m = 0
+			rospy.wait_for_service("/breadcrumb/set_mode", timeout=1.0)
+
+			if req_str == "PRECONNECT":
+				m = SetMode._request_class.NAV_MODE_PRECONNECT
+			elif req_str == "SLEEP":
+				m = SetMode._request_class.NAV_MODE_SLEEP
+			elif req_str == "TAKEOFF":
+				m = SetMode._request_class.NAV_MODE_TAKEOFF
+			elif req_str == "MISSION":
+				m = SetMode._request_class.NAV_MODE_MISSION
+			elif req_str == "PAUSE":
+				m = SetMode._request_class.NAV_MODE_PAUSE
+			elif req_str == "EXTERNAL":
+				m = SetMode._request_class.NAV_MODE_EXTERNAL
+			elif req_str == "HOME":
+				m = SetMode._request_class.NAV_MODE_HOME
+			elif req_str == "LAND":
+				m = SetMode._request_class.NAV_MODE_LAND
+			elif req_str == "HALT":
+				m = SetMode._request_class.NAV_MODE_HALT
+			else:
+				self.print_msg("Unknown mode: %s"%args.mode)
+				#return 0
+
+			try:
+				req = rospy.ServiceProxy("/breadcrumb/set_mode", SetMode)
+				ret = req(m)
+			except rospy.ServiceException, e:
+				self.print_msg("Service call failed: %s"%e)
+
+			if ret.success:
+				self.print_msg("Mode successfully set!")
+			else:
+				self.print_msg( "Failed to set new mode\nCheck breadcrumb logs for more details")
+
+			#return ret
+		except:
+			self.print_msg("ERROR: Service is not currently available!")
 	def cmd_wp_button(self):	# Handles actual commands for the SPARE command
 		self.print_msg("Test: UNDEFINED")
 #=========================Validate Inputs========================#
