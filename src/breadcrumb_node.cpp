@@ -86,7 +86,7 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 			} else {
 				ROS_ERROR( "[NAV] Mission in progress, refusing mode switch to: %s", modeNames.at( req.mode_req ).c_str());
 			}
-			
+
 			break;
 		//Allow switch to SLEEP, MISSION, or LAND
 		case NAV_MODE_EXTERNAL:
@@ -178,11 +178,11 @@ void state_cb(const mavros_msgs::State::ConstPtr& msg) {
 void local_pos_cb(const geometry_msgs::TransformStamped::ConstPtr& msg) {
 	currentPose.header = msg->header;
 	currentPose.header.frame_id = msg->child_frame_id;
-	
+
 	currentPose.pose.position.x = msg->transform.translation.x;
 	currentPose.pose.position.y = msg->transform.translation.y;
 	currentPose.pose.position.z = msg->transform.translation.z;
-	
+
 	currentPose.pose.orientation.w = msg->transform.rotation.w;
 	currentPose.pose.orientation.x = msg->transform.rotation.x;
 	currentPose.pose.orientation.y = msg->transform.rotation.y;
@@ -423,7 +423,7 @@ int main(int argc, char **argv)
 		ROS_WARN( "No parameter set for \"waypoint_input\", using: %s", waypointInput.c_str() );
 	}
 	ROS_INFO( "Listening for waypoint input: %s", waypointInput.c_str() );
-	
+
 	if( !nh.getParam( "external_input", externalInput ) ) {
 		ROS_WARN( "No parameter set for \"external_input\", using: %s", externalInput.c_str() );
 	}
@@ -719,7 +719,7 @@ int main(int argc, char **argv)
 			if( ( stateCounter >= MSG_STREAM_STATE ) && !inputStreamState )
 				inputStreamState = true;
 		}
-		
+
 		// If the system was running, but the mav has switched modes or disarmed
 		//if( ( systemOperational ) && ( ( currentState.mode != "OFFBOARD" ) || ( !currentState.armed ) || !inputStreamState || !inputStreamPosition ) ) {
 		if( ( systemOperational ) && ( ( currentState.mode != "STABILIZED" ) || ( !currentState.armed ) || !inputStreamState || !inputStreamPosition ) ) {
@@ -795,7 +795,7 @@ int main(int argc, char **argv)
 						ROS_INFO( "[CMD] Breadcrumb is now active" );
 
 						ROS_WARN( "DEMO MODE SWITCH [TAKEOFF]" );
-						navCurrentMode = NAV_MODE_TAKEOFF; //TODO: Should just not be here
+						//navCurrentMode = NAV_MODE_TAKEOFF; //TODO: Should just not be here
 						changedMode = true;
 					}
 				} else {
@@ -840,7 +840,7 @@ int main(int argc, char **argv)
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
 					ROS_INFO( "Reached takeoff goal!" );
-					navCurrentMode = NAV_MODE_MISSION;	//TODO: Should be NAV_MODE_SLEEP, or maybe Home?
+					navCurrentMode = NAV_MODE_SLEEP;
 					changedMode = true;
 				}
 
@@ -873,7 +873,7 @@ int main(int argc, char **argv)
 
 						mission_confirm_pub.publish( outputConfirm );
 
-						navCurrentMode = NAV_MODE_HOME;	//TODO: Should be sleep
+						navCurrentMode = NAV_MODE_SLEEP;
 						changedMode = true;
 
 						ROS_INFO( "All waypoints have been reached..." );
@@ -891,7 +891,7 @@ int main(int argc, char **argv)
 				}
 
 				ROS_INFO_THROTTLE(MSG_FREQ, "Mission paused, waiting for resume..." );
-				
+
 				break;
 			case NAV_MODE_EXTERNAL:
 				if( changedMode ) {
@@ -899,7 +899,7 @@ int main(int argc, char **argv)
 					changedMode = false;
 					ROS_INFO( "[NAV] Commanding to follow external pose goal..." );
 				}
-				
+
 				if( 2.0 < ( ros::Time::now() - externalPose.header.stamp ).toSec() ) {
 					ROS_INFO( "[NAV] Rejecting external mode, no fresh external goal" );
 					changedMode = true;
@@ -907,7 +907,7 @@ int main(int argc, char **argv)
 				} else {
 					currentGoal = externalPose.pose;
 				}
-				
+
 				break;
 			case NAV_MODE_HOME:
 				if( changedMode ) {
@@ -920,7 +920,7 @@ int main(int argc, char **argv)
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
 					changedMode = true;
-					navCurrentMode = NAV_MODE_LAND;	//TODO: Should be sleep
+					navCurrentMode = NAV_MODE_SLEEP;
 				}
 
 				break;
@@ -939,10 +939,10 @@ int main(int argc, char **argv)
 
 				if( comparePose( currentGoal, currentPose.pose ) ) {
 					ROS_INFO_THROTTLE( 2.0, "Reached landing goal!" );
-					
+
 					changedMode = true;
 					navCurrentMode = NAV_MODE_HALT;
-					
+
 					/* TODO: Could be useful, but out of scope
 					ROS_WARN( "[CMD] Attempting to disarm mav" );
 					if( arming_client.call(disarm_cmd) && disarm_cmd.response.success ) {

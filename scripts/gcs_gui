@@ -193,7 +193,7 @@ class ControlPanel:
 		self.button_land.grid(column=5, row=1, sticky=N+S+E+W)
 		self.button_set_mode = tk.Button(self.frame, text="Set Mode", command=self.cmd_mav_set_mode)
 		self.button_set_mode.grid(column=5, row=3, sticky=N+S+E+W)
-		self.drop_mode_select = tk.OptionMenu(self.frame, self.value_selected_mode, "PRECONNECT", "SLEEP", "TAKEOFF", "MISSION", "PAUSE", "HOME", "LAND", "HALT")
+		self.drop_mode_select = tk.OptionMenu(self.frame, self.value_selected_mode, "PRECONNECT", "SLEEP", "TAKEOFF", "MISSION", "PAUSE", "EXTERNAL", "HOME", "LAND", "HALT")
 		self.drop_mode_select.grid(column=6, row=3, sticky=N+S+E+W)
 		self.button_exit = tk.Button(self.frame, text="Exit", command=self.program_exit)
 		self.button_exit.grid(column=6, row=6, sticky=N+S+E+W)
