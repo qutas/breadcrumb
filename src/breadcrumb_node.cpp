@@ -220,6 +220,7 @@ void waypoint_cb(const geometry_msgs::PoseArray::ConstPtr& msg) {
 
 void ext_pos_cb(const geometry_msgs::PoseStamped::ConstPtr& msg) {
 	externalPose = *msg;
+	ROS_INFO_THROTTLE(2.0, "Receiving external guidance.");
 }
 
 geometry_msgs::Vector3 toEuler(geometry_msgs::Quaternion q) {

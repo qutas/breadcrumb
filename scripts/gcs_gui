@@ -203,6 +203,8 @@ class ControlPanel:
 
 		self.button_wp_select = tk.Button(self.frame, text="Waypoint\nPlanner", command=self.cmd_wp_plan)
 		self.button_wp_select.grid(column=6, row=1, sticky=N+S+E+W)
+		self.button_activate = tk.Button(self.frame, text="Activate", command=self.cmd_bc_activate)
+		self.button_activate.grid(column=6, row=2, sticky=N+S+E+W)
 		self.label_loaded_wp = tk.Label(self.frame, text="Current: None")
 		self.label_loaded_wp.grid(column=2, row=4, sticky=(N+S+W), columnspan=3)
 		self.button_wp_load = tk.Button(self.frame, text="Load Path", command=self.cmd_wp_load)
@@ -295,6 +297,9 @@ class ControlPanel:
 	def cmd_guide_home(self):	# Issues the home command based off of the values in the entry boxes
 		self.print_msg("Attempting to switch to mode: HOME")
 		self.cmd_set_mode("HOME")
+	def cmd_bc_activate(self):	# Issues the home command based off of the values in the entry boxes
+		self.print_msg("Attempting to activate breadcrumb")
+		self.cmd_do_activate()
 	def cmd_guide_goto(self):	# Issues the goto command based off of the values in the entry boxes
 		self.print_msg("Test: GoTo")
 		#TODO: Publish single waypoint
@@ -383,6 +388,30 @@ class ControlPanel:
 				self.print_msg( "Failed to set new mode\nCheck breadcrumb logs for more details")
 
 			#return ret
+		except:
+			self.print_msg("ERROR: Service is not currently available!")
+	def cmd_do_activate(self):
+		try:
+			rospy.wait_for_service("/breadcrumb/activate", timeout=1.0)
+
+			try:
+				req = rospy.ServiceProxy("/breadcrumb/activate", Activate)
+				ret = req()
+			except rospy.ServiceException, e:
+				self.print_msg("Service call failed: %s"%e)
+
+			if ret.success == 1:
+				self.print_msg("Breadcrumb activated!")
+			else:
+				self.print_msg("Request to activate was denied: ")
+				if ret.success == Activate._request_class.ACT_DENIED_GENERIC:
+					self.print_msg("\tCheck breadcrumb logs for more details.")
+				elif ret.success == Activate._request_class.ACT_DENIED_STATE:
+					self.print_msg("\tA state message steam has not been established.")
+				elif ret.success == Activate._request_class.ACT_DENIED_POSITION:
+					self.print_msg("\tA position message steam has not been established.")
+				elif ret.success == Activate._request_class.ACT_DENIED_NO_CONNECT:
+					self.print_msg("\tContact with the mav has not been made.")
 		except:
 			self.print_msg("ERROR: Service is not currently available!")
 	def cmd_wp_button(self):	# Handles actual commands for the SPARE command
