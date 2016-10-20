@@ -791,13 +791,11 @@ int main(int argc, char **argv)
 
 						ROS_INFO( "[CMD] Mav is armed and listening" );
 						navCurrentMode = NAV_MODE_SLEEP;
+						changedMode = true;
+
 						systemOperational = true;
 						startSystem = false;
 						ROS_INFO( "[CMD] Breadcrumb is now active" );
-
-						ROS_WARN( "DEMO MODE SWITCH [TAKEOFF]" );
-						//navCurrentMode = NAV_MODE_TAKEOFF; //TODO: Should just not be here
-						changedMode = true;
 					}
 				} else {
 					ROS_INFO_THROTTLE(MSG_FREQ, "Breadcrumb is in standby, awaiting activation..." );
