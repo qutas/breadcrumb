@@ -52,6 +52,7 @@ enum navModes {
 	NAV_MODE_EXTERNAL,		// If the is has been a recent message, will set that as the current target (timeout to sleep)
 	NAV_MODE_HOME,			// Returns to a defined home location
 	NAV_MODE_LAND,			// Land at current position (then rely on the auto disarm)
+	NAV_MODE_FAILSAFE,		// Temporarily halt all movement until the user reactivates the system
 	NAV_MODE_HALT			// Stop breadcrumb, but leave the UAV in a pre-set mode (Loiter if not specified)
 };
 
@@ -64,6 +65,7 @@ const std::vector<std::string> modeNames = {
 	"EXTERNAL",
 	"HOME",
 	"LAND",
+	"FAILSAFE",
 	"HALT"
 };
 

@@ -6,7 +6,8 @@ uint8 NAV_MODE_PAUSE = 4
 uint8 NAV_MODE_EXTERNAL = 5
 uint8 NAV_MODE_HOME = 6
 uint8 NAV_MODE_LAND = 7
-uint8 NAV_MODE_HALT = 8
+uint8 NAV_MODE_FAILSAFE = 8
+uint8 NAV_MODE_HALT = 9
 
 uint8 mode_req		# As defined in the navModes enum
 ---

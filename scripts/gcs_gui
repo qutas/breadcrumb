@@ -370,6 +370,8 @@ class ControlPanel:
 				m = SetMode._request_class.NAV_MODE_HOME
 			elif req_str == "LAND":
 				m = SetMode._request_class.NAV_MODE_LAND
+			elif req_str == "FAILSAFE":
+				m = SetMode._request_class.NAV_MODE_FAILSAFE
 			elif req_str == "HALT":
 				m = SetMode._request_class.NAV_MODE_HALT
 			else:

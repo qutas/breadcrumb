@@ -119,6 +119,11 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 
 			break;
 		//Don't allow switch from HALT
+		case NAV_MODE_FAILSAFE:
+			ROS_ERROR( "Cannot mode switch from failsafe, try activating!" );
+
+			break;
+		//Don't allow switch from HALT
 		case NAV_MODE_HALT:
 			ROS_ERROR( "Breadcrumb should be exiting, can't change mode!" );
 
@@ -726,16 +731,14 @@ int main(int argc, char **argv)
 		if( ( systemOperational ) && ( ( currentState.mode != "STABILIZED" ) || ( !currentState.armed ) || !inputStreamState || !inputStreamPosition ) ) {
 			startSystem = false;
 			systemOperational = false;
-			sendMovement = false;
-			currentGoal = currentPose.pose;
-			navCurrentMode = NAV_MODE_PRECONNECT;
+
+			navCurrentMode = NAV_MODE_FAILSAFE;
+			changedMode = true;
 
 			waypointCounter == -1;
 
 			ROS_ERROR( "[CMD] The mav has changed to a non-controllable state [MODE: %s, ARMED: %d]", currentState.mode.c_str(), currentState.armed );
-			ROS_WARN( "[CMD] Resetting goal to [HOME] coordinates: [%0.2f, %0.2f, %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z );
-			ROS_WARN( "[CMD] Disconnecting breadcrumb, breadcrumb can be reconnected when the system has returned to a usable state" );
-		}	//TODO: Get the user to reset if this is the case
+		}
 
 		switch( navCurrentMode ) {
 			case NAV_MODE_PRECONNECT:
@@ -964,6 +967,36 @@ int main(int argc, char **argv)
 				//terminate = true;
 
 				break;
+			case NAV_MODE_FAILSAFE:
+				if( changedMode ) {
+					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
+					changedMode = false;
+
+					currentGoal = currentPose.pose;
+					ROS_WARN( "[CMD] Setting goal current coordinates: [%0.2f, %0.2f, %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z );
+
+					sendMovement = false;
+					ROS_WARN( "[NAV] Disabling navigation!" );
+				}
+
+
+				ROS_INFO_THROTTLE( MSG_FREQ, "[NAV] Waiting for user to reactivate the system!" );
+
+				if( startSystem ) {
+					systemOperational = true;
+					startSystem = false;
+
+					currentGoal = currentPose.pose;
+					ROS_WARN( "[CMD] Setting goal current coordinates: [%0.2f, %0.2f, %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z );
+
+					sendMovement = true;
+					ROS_WARN( "[NAV] Enabling navigation!" );
+
+					navCurrentMode = NAV_MODE_SLEEP;
+					changedMode = true;
+				}
+
+				break;
 			case NAV_MODE_HALT:
 				if( changedMode ) {
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
@@ -1067,12 +1100,13 @@ int main(int argc, char **argv)
 
 	ROS_INFO( "[CMD] Breadcrumb is shutting down" );
 
-	if( currentState.mode == "OFFBOARD" )
-		ROS_WARN( "[CMD] Mav is still in OFFBOARD mode!" );
+	//if( currentState.mode == "OFFBOARD" )
+	//	ROS_WARN( "[CMD] Mav is still in OFFBOARD mode!" );
 
 	if( currentState.armed )
 		ROS_WARN( "[CMD] Mav is still armed!" );
 
+	ros::shutdown();
 
 	return 0;
 }

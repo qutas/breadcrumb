@@ -40,6 +40,8 @@ def do_set_mode(args):
 		m = SetMode._request_class.NAV_MODE_HOME
 	elif args.mode == "LAND":
 		m = SetMode._request_class.NAV_MODE_LAND
+	elif args.mode == "FAILSAFE":
+		m = SetMode._request_class.NAV_MODE_FAILSAFE
 	elif args.mode == "HALT":
 		m = SetMode._request_class.NAV_MODE_HALT
 	else:
@@ -101,7 +103,7 @@ def main():
 
 	set_mode_args = subarg.add_parser('setmode', help="Request a guidance mode")
 	set_mode_args.set_defaults(func=do_set_mode)
-	set_mode_args.add_argument('mode', type=str, help="Avaliable modes: PRECONNECT, SLEEP, TAKEOFF, MISSION, PAUSE, HOME, LAND, HALT")
+	set_mode_args.add_argument('mode', type=str, help="Avaliable modes: PRECONNECT, SLEEP, TAKEOFF, MISSION, PAUSE, HOME, LAND, FAILSAFE, HALT")
 
 	args = parser.parse_args(rospy.myargv(argv=sys.argv)[1:])
 
