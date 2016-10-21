@@ -227,8 +227,8 @@ void ext_pos_cb(const geometry_msgs::PoseStamped::ConstPtr& msg) {
 	bool use_ext = false;
 
 	//If the quaternion is normalized
-	if( (ros::Time::now() - msg->stamp).toSec() < 2.0 ) {
-		double q_len = std::sqrt( ( msg->pose.orientation.w * msg->pose.orientation.w ) ( msg->pose.orientation.x * msg->pose.orientation.x ) ( msg->pose.orientation.y * msg->pose.orientation.y ) + ( msg->pose.orientation.z * msg->pose.orientation.z ) );
+	if( (ros::Time::now() - msg->header.stamp).toSec() < 2.0 ) {
+		double q_len = std::sqrt( ( msg->pose.orientation.w * msg->pose.orientation.w ) + ( msg->pose.orientation.x * msg->pose.orientation.x ) + ( msg->pose.orientation.y * msg->pose.orientation.y ) + ( msg->pose.orientation.z * msg->pose.orientation.z ) );
 
 		//If the quaternion is normalized
 		if( q_len > 0.98 ) {
