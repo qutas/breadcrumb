@@ -224,8 +224,26 @@ void waypoint_cb(const geometry_msgs::PoseArray::ConstPtr& msg) {
 }
 
 void ext_pos_cb(const geometry_msgs::PoseStamped::ConstPtr& msg) {
-	externalPose = *msg;
-	ROS_INFO_THROTTLE(2.0, "Receiving external guidance.");
+	bool use_ext = false;
+
+	//If the quaternion is normalized
+	if( (ros::Time::now() - msg->stamp).toSec() < 2.0 ) {
+		double q_len = std::sqrt( ( msg->pose.orientation.w * msg->pose.orientation.w ) ( msg->pose.orientation.x * msg->pose.orientation.x ) ( msg->pose.orientation.y * msg->pose.orientation.y ) + ( msg->pose.orientation.z * msg->pose.orientation.z ) );
+
+		//If the quaternion is normalized
+		if( q_len > 0.98 ) {
+			use_ext = true;
+		} else {
+			ROS_WARN_THROTTLE(2.0, "[NAV] Ignoring external guidance: Quaternion not normalized");
+		}
+	} else {
+		ROS_WARN_THROTTLE(2.0, "[NAV] Ignoring external guidance: Timestamp is too old");
+	}
+
+	if( use_ext ) {
+		externalPose = *msg;
+		ROS_INFO_THROTTLE(2.0, "Receiving external guidance.");
+	}
 }
 
 geometry_msgs::Vector3 toEuler(geometry_msgs::Quaternion q) {
