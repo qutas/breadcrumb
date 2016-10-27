@@ -316,41 +316,25 @@ int main(int argc, char **argv)
 	//TODO: Set a fallback mode for HALT
 
 	//==== Topics ====//
-	std::string positionInput = "reference/pose";
-	std::string waypointInput = "reference/wapoints";
-	std::string externalInput = "reference/external";
+	std::string param_input_position = "reference/pose";
+	std::string param_input_waypoint = "reference/wapoints";
+	std::string param_input_external = "reference/external";
 
-	std::string positionOutputTopic = "goal/position_target";
-	std::string velocityOutputTopic = "goal/velocity_target";
+	std::string param_output_goal_position = "goal/position_target";
+	std::string param_output_goal_velocity = "goal/velocity_target";
 
-	std::string waypointConfirm = "goal/waypoint_complete";
-	std::string missionConfirm = "goal/mission_complete";
+	std::string param_output_confirm_waypont = "goal/waypoint_complete";
+	std::string param_output_confirm_mission = "goal/mission_complete";
 
 	bool sendVelocity = true;
 
-	//==== Prepare Topics ====//
-	//outputTwist.header.frame_id = "fcu";
-
-	/*
-	outputPose.header.frame_id = "fcu";
-	outputTarget.header.frame_id = "fcu";
-	outputTarget.coordinate_frame = outputTarget.FRAME_BODY_OFFSET_NED;
-	outputTarget.type_mask += outputTarget.IGNORE_PX;
-	outputTarget.type_mask += outputTarget.IGNORE_PY;
-	outputTarget.type_mask += outputTarget.IGNORE_PZ;
-	outputTarget.type_mask += outputTarget.IGNORE_AFX;
-	outputTarget.type_mask += outputTarget.IGNORE_AFY;
-	outputTarget.type_mask += outputTarget.IGNORE_AFZ;
-	outputTarget.type_mask += outputTarget.IGNORE_YAW;
-	*/
-
 	//==== System Settings ====//
-	double navRate = 25.0;
-	double stateTimeout = 5.0;
-	double posTimeout = 1.0;
+	double param_system_nav_rate = 25.0;
+	double param_system_timeout_state = 5.0;
+	double param_system_timeout_position = 1.0;
 	long stateCounter = 0;;
 	long posCounter = 0;
-	std::string velFrameStr = "world";
+	std::string param_system_frame_type_vel = "world";
 	int velocityFrame = -1;
 
 	//==== MavROS Interface ====//
@@ -387,49 +371,30 @@ int main(int argc, char **argv)
 
 	ROS_INFO("[System Parameters]");
 
-	if( !nh.getParam( "system/state_timeout", stateTimeout ) ) {
-		ROS_WARN( "No parameter set for \"system/state_timeout\", using: %0.2f", stateTimeout );
+	if( !nh.getParam( "system/state_timeout", param_system_timeout_state ) ) {
+		ROS_WARN( "No parameter set for \"system/state_timeout\", using: %0.2f", param_system_timeout_state );
 	}
-	ROS_INFO( "Setting state message timeout to: %0.2f", stateTimeout );
+	ROS_INFO( "Setting state message timeout to: %0.2f", param_system_timeout_state );
 
-	if( !nh.getParam( "system/pos_timeout", posTimeout ) ) {
-		ROS_WARN( "No parameter set for \"system/pos_timeout\", using: %0.2f", posTimeout );
+	if( !nh.getParam( "system/pos_timeout", param_system_timeout_position ) ) {
+		ROS_WARN( "No parameter set for \"system/pos_timeout\", using: %0.2f", param_system_timeout_position );
 	}
-	ROS_INFO( "Setting position input timeout to: %0.2f", posTimeout );
+	ROS_INFO( "Setting position input timeout to: %0.2f", param_system_timeout_position );
 
-	if( !nh.getParam( "system/nav_rate", navRate ) ) {
-		ROS_WARN( "No parameter set for \"system/nav_rate\", using: %0.2f", navRate );
+	if( !nh.getParam( "system/nav_rate", param_system_nav_rate ) ) {
+		ROS_WARN( "No parameter set for \"system/nav_rate\", using: %0.2f", param_system_nav_rate );
 	}
-	ROS_INFO( "Setting control loop rate to: %0.2f", navRate );
-
-	if( !nh.getParam( "system/vel_frame", velFrameStr ) ) {
-		ROS_WARN( "No parameter set for \"system/vel_frame\", using: %s", velFrameStr );
-	}
-
-	if(velFrameStr == "world")
-		velocityFrame = VEL_FRAME_WORLD;
-
-	if(velFrameStr == "body")
-		velocityFrame = VEL_FRAME_BODY;
-
-	if(velocityFrame == -1) {
-		ROS_ERROR( "Invalid velocity output frame: %s", velFrameStr.c_str() );
-		ROS_ERROR( "Using default frame!" );
-		velFrameStr = "body";
-		velocityFrame = VEL_FRAME_BODY;
-	}
-
-	ROS_INFO( "Setting velocity output frame to: %i (%s)", velocityFrame, velFrameStr.c_str() );
+	ROS_INFO( "Setting control loop rate to: %0.2f", param_system_nav_rate );
 
 	//the setpoint publishing rate MUST be faster than 2Hz
-	ros::Rate rate(navRate);
+	ros::Rate rate(param_system_nav_rate);
 
 	//==== PID Controllers ====//
-	pid pos_x_pid(1.0/navRate);
-	pid pos_y_pid(1.0/navRate);
-	pid pos_z_pid(1.0/navRate);
+	pid param_pid_pos_x(1.0/param_system_nav_rate);
+	pid param_pid_pos_y(1.0/param_system_nav_rate);
+	pid param_pid_pos_z(1.0/param_system_nav_rate);
 
-	pid ang_h_pid(1.0/navRate);
+	pid param_pid_hdg(1.0/param_system_nav_rate);
 
 	//================================//
 	// Load Parameters                //
@@ -438,121 +403,141 @@ int main(int argc, char **argv)
 	//Input/Output //================================================================
 	ROS_INFO("[Input & Output Topics]");
 
-	if( !nh.getParam( "position_input", positionInput ) ) {
-		ROS_WARN( "No parameter set for \"position_input\", using: %s", positionInput.c_str() );
+	if( !nh.getParam( "position_input", param_input_position ) ) {
+		ROS_WARN( "No parameter set for \"position_input\", using: %s", param_input_position.c_str() );
 	}
-	ROS_INFO( "Listening for position input: %s", positionInput.c_str() );
+	ROS_INFO( "Listening for position input: %s", param_input_position.c_str() );
 
-	if( !nh.getParam( "waypoint_input", waypointInput ) ) {
-		ROS_WARN( "No parameter set for \"waypoint_input\", using: %s", waypointInput.c_str() );
+	if( !nh.getParam( "waypoint_input", param_input_waypoint ) ) {
+		ROS_WARN( "No parameter set for \"waypoint_input\", using: %s", param_input_waypoint.c_str() );
 	}
-	ROS_INFO( "Listening for waypoint input: %s", waypointInput.c_str() );
+	ROS_INFO( "Listening for waypoint input: %s", param_input_waypoint.c_str() );
 
-	if( !nh.getParam( "external_input", externalInput ) ) {
-		ROS_WARN( "No parameter set for \"external_input\", using: %s", externalInput.c_str() );
+	if( !nh.getParam( "external_input", param_input_external ) ) {
+		ROS_WARN( "No parameter set for \"external_input\", using: %s", param_input_external.c_str() );
 	}
-	ROS_INFO( "Listening for external guidance: %s", externalInput.c_str() );
+	ROS_INFO( "Listening for external guidance: %s", param_input_external.c_str() );
 
-	if( !nh.getParam( "reached_goal", waypointConfirm ) ) {
-		ROS_WARN( "No parameter set for \"reached_goal\", using: %s", waypointConfirm.c_str() );
+	if( !nh.getParam( "reached_goal", param_output_confirm_waypont ) ) {
+		ROS_WARN( "No parameter set for \"reached_goal\", using: %s", param_output_confirm_waypont.c_str() );
 	}
-	ROS_INFO( "Broadcasting waypoint incremental status: %s", waypointConfirm.c_str() );
+	ROS_INFO( "Broadcasting waypoint incremental status: %s", param_output_confirm_waypont.c_str() );
 
-	if( !nh.getParam( "mission_goal", missionConfirm ) ) {
-		ROS_WARN( "No parameter set for \"mission_goal\", using: %s", missionConfirm.c_str() );
+	if( !nh.getParam( "mission_goal", param_output_confirm_mission ) ) {
+		ROS_WARN( "No parameter set for \"mission_goal\", using: %s", param_output_confirm_mission.c_str() );
 	}
-	ROS_INFO( "Broadcasting mission status: %s", missionConfirm.c_str() );
+	ROS_INFO( "Broadcasting mission status: %s", param_output_confirm_mission.c_str() );
 
-	if( !nh.getParam( "position_goal", positionOutputTopic ) ) {	//We don't disable this so there we always have the "goal waypoint"
-		ROS_WARN( "No parameter set for \"position_goal\", using: %s", positionOutputTopic.c_str() );
+	if( !nh.getParam( "position_goal", param_output_goal_position ) ) {	//We don't disable this so there we always have the "goal waypoint"
+		ROS_WARN( "No parameter set for \"position_goal\", using: %s", param_output_goal_position.c_str() );
 	} else {
-		ROS_INFO( "Sending position commands to: %s", positionOutputTopic.c_str() );
+		ROS_INFO( "Sending position commands to: %s", param_output_goal_position.c_str() );
 	}
 
-	if( !nh.getParam( "velocity_goal", velocityOutputTopic ) ) {
+	if( !nh.getParam( "velocity_goal", param_output_goal_velocity ) ) {
 		ROS_WARN( "No parameter set for \"velocity_goal\", disabling velocity output" );
 		sendVelocity = false;
 	} else {
-		ROS_INFO( "Sending velocity commands to: %s", velocityOutputTopic.c_str() );
+		ROS_INFO( "Sending velocity commands to: %s", param_output_goal_velocity.c_str() );
 	}
 
 	if( sendVelocity ) {
+		if( !nh.getParam( "system/vel_frame", param_system_frame_type_vel ) ) {
+		ROS_WARN( "No parameter set for \"system/vel_frame\", using: %s", param_system_frame_type_vel );
+		}
+
+		if(param_system_frame_type_vel == "world")
+			velocityFrame = VEL_FRAME_WORLD;
+
+		if(param_system_frame_type_vel == "body")
+			velocityFrame = VEL_FRAME_BODY;
+
+		if(velocityFrame == -1) {
+			ROS_ERROR( "Invalid velocity output frame: %s", param_system_frame_type_vel.c_str() );
+			ROS_ERROR( "Using default frame!" );
+			param_system_frame_type_vel = "body";
+			velocityFrame = VEL_FRAME_BODY;
+		}
+
+		ROS_INFO( "Setting velocity output frame to: %i (%s)", velocityFrame, param_system_frame_type_vel.c_str() );
+
+
 		ROS_INFO("[Position Controller]");
 
 		//POS XY PID //================================================================
-		if( !nh.getParam( "pos_xy_pid/p", pos_x_pid.Kp) ) {
-			ROS_WARN( "No parameter set for \"pos_xy_pid/p\", using: %0.2f", pos_x_pid.Kp);
+		if( !nh.getParam( "pos_xy_pid/p", param_pid_pos_x.Kp) ) {
+			ROS_WARN( "No parameter set for \"pos_xy_pid/p\", using: %0.2f", param_pid_pos_x.Kp);
 		}
 
-		if( !nh.getParam( "pos_xy_pid/i", pos_x_pid.Ki) ) {
-			ROS_WARN( "No parameter set for \"pos_xy_pid/i\", using: %0.2f", pos_x_pid.Ki);
+		if( !nh.getParam( "pos_xy_pid/i", param_pid_pos_x.Ki) ) {
+			ROS_WARN( "No parameter set for \"pos_xy_pid/i\", using: %0.2f", param_pid_pos_x.Ki);
 		}
 
-		if( !nh.getParam( "pos_xy_pid/d", pos_x_pid.Kd) ) {
-			ROS_WARN( "No parameter set for \"pos_xy_pid/d\", using: %0.2f", pos_x_pid.Kd);
+		if( !nh.getParam( "pos_xy_pid/d", param_pid_pos_x.Kd) ) {
+			ROS_WARN( "No parameter set for \"pos_xy_pid/d\", using: %0.2f", param_pid_pos_x.Kd);
 		}
 
-		if( !nh.getParam( "pos_xy_pid/min", pos_x_pid.min_output) ) {
-			ROS_WARN( "No parameter set for \"pos_xy_pid/min\", using: %0.2f", pos_x_pid.min_output);
+		if( !nh.getParam( "pos_xy_pid/min", param_pid_pos_x.min_output) ) {
+			ROS_WARN( "No parameter set for \"pos_xy_pid/min\", using: %0.2f", param_pid_pos_x.min_output);
 		}
 
-		if( !nh.getParam( "pos_xy_pid/max", pos_x_pid.max_output) ) {
-			ROS_WARN( "No parameter set for \"pos_xy_pid/max\", using: %0.2f", pos_x_pid.max_output);
+		if( !nh.getParam( "pos_xy_pid/max", param_pid_pos_x.max_output) ) {
+			ROS_WARN( "No parameter set for \"pos_xy_pid/max\", using: %0.2f", param_pid_pos_x.max_output);
 		}
 
-		pos_y_pid.Kp = pos_x_pid.Kp;
-		pos_y_pid.Ki = pos_x_pid.Ki;
-		pos_y_pid.Kd = pos_x_pid.Kd;
-		pos_y_pid.min_output = pos_x_pid.min_output;
-		pos_y_pid.max_output = pos_x_pid.max_output;
+		param_pid_pos_y.Kp = param_pid_pos_x.Kp;
+		param_pid_pos_y.Ki = param_pid_pos_x.Ki;
+		param_pid_pos_y.Kd = param_pid_pos_x.Kd;
+		param_pid_pos_y.min_output = param_pid_pos_x.min_output;
+		param_pid_pos_y.max_output = param_pid_pos_x.max_output;
 
-		ROS_INFO( "Setting pos_xy_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", pos_x_pid.Kp, pos_x_pid.Ki, pos_x_pid.Kd, pos_x_pid.min_output, pos_x_pid.max_output);
+		ROS_INFO( "Setting pos_xy_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", param_pid_pos_x.Kp, param_pid_pos_x.Ki, param_pid_pos_x.Kd, param_pid_pos_x.min_output, param_pid_pos_x.max_output);
 
 		//POS Z PID //================================================================
-		if( !nh.getParam( "pos_z_pid/p", pos_z_pid.Kp) ) {
-			ROS_WARN( "No parameter set for \"pos_z_pid/p\", using: %0.2f", pos_z_pid.Kp);
+		if( !nh.getParam( "pos_z_pid/p", param_pid_pos_z.Kp) ) {
+			ROS_WARN( "No parameter set for \"pos_z_pid/p\", using: %0.2f", param_pid_pos_z.Kp);
 		}
 
-		if( !nh.getParam( "pos_z_pid/i", pos_z_pid.Ki) ) {
-			ROS_WARN( "No parameter set for \"pos_z_pid/i\", using: %0.2f", pos_z_pid.Ki);
+		if( !nh.getParam( "pos_z_pid/i", param_pid_pos_z.Ki) ) {
+			ROS_WARN( "No parameter set for \"pos_z_pid/i\", using: %0.2f", param_pid_pos_z.Ki);
 		}
 
-		if( !nh.getParam( "pos_z_pid/d", pos_z_pid.Kd) ) {
-			ROS_WARN( "No parameter set for \"pos_z_pid/d\", using: %0.2f", pos_z_pid.Kd);
+		if( !nh.getParam( "pos_z_pid/d", param_pid_pos_z.Kd) ) {
+			ROS_WARN( "No parameter set for \"pos_z_pid/d\", using: %0.2f", param_pid_pos_z.Kd);
 		}
 
-		if( !nh.getParam( "pos_z_pid/min", pos_z_pid.min_output) ) {
-			ROS_WARN( "No parameter set for \"pos_z_pid/min\", using: %0.2f", pos_z_pid.min_output);
+		if( !nh.getParam( "pos_z_pid/min", param_pid_pos_z.min_output) ) {
+			ROS_WARN( "No parameter set for \"pos_z_pid/min\", using: %0.2f", param_pid_pos_z.min_output);
 		}
 
-		if( !nh.getParam( "pos_z_pid/max", pos_z_pid.max_output) ) {
-			ROS_WARN( "No parameter set for \"pos_z_pid/max\", using: %0.2f", pos_z_pid.max_output);
+		if( !nh.getParam( "pos_z_pid/max", param_pid_pos_z.max_output) ) {
+			ROS_WARN( "No parameter set for \"pos_z_pid/max\", using: %0.2f", param_pid_pos_z.max_output);
 		}
 
-		ROS_INFO( "Setting pos_z_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", pos_z_pid.Kp, pos_z_pid.Ki, pos_z_pid.Kd, pos_z_pid.min_output, pos_z_pid.max_output);
+		ROS_INFO( "Setting pos_z_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", param_pid_pos_z.Kp, param_pid_pos_z.Ki, param_pid_pos_z.Kd, param_pid_pos_z.min_output, param_pid_pos_z.max_output);
 
 		//H PID //================================================================
-		if( !nh.getParam( "h_pid/p", ang_h_pid.Kp) ) {
-			ROS_WARN( "No parameter set for \"h_pid/p\", using: %0.2f", ang_h_pid.Kp);
+		if( !nh.getParam( "h_pid/p", param_pid_hdg.Kp) ) {
+			ROS_WARN( "No parameter set for \"h_pid/p\", using: %0.2f", param_pid_hdg.Kp);
 		}
 
-		if( !nh.getParam( "h_pid/i", ang_h_pid.Ki) ) {
-			ROS_WARN( "No parameter set for \"h_pid/i\", using: %0.2f", ang_h_pid.Ki);
+		if( !nh.getParam( "h_pid/i", param_pid_hdg.Ki) ) {
+			ROS_WARN( "No parameter set for \"h_pid/i\", using: %0.2f", param_pid_hdg.Ki);
 		}
 
-		if( !nh.getParam( "h_pid/d", ang_h_pid.Kd) ) {
-			ROS_WARN( "No parameter set for \"h_pid/d\", using: %0.2f", ang_h_pid.Kd);
+		if( !nh.getParam( "h_pid/d", param_pid_hdg.Kd) ) {
+			ROS_WARN( "No parameter set for \"h_pid/d\", using: %0.2f", param_pid_hdg.Kd);
 		}
 
-		if( !nh.getParam( "h_pid/min", ang_h_pid.min_output) ) {
-			ROS_WARN( "No parameter set for \"h_pid/min\", using: %0.2f", ang_h_pid.min_output);
+		if( !nh.getParam( "h_pid/min", param_pid_hdg.min_output) ) {
+			ROS_WARN( "No parameter set for \"h_pid/min\", using: %0.2f", param_pid_hdg.min_output);
 		}
 
-		if( !nh.getParam( "h_pid/max", ang_h_pid.max_output) ) {
-			ROS_WARN( "No parameter set for \"h_pid/max\", using: %0.2f", ang_h_pid.max_output);
+		if( !nh.getParam( "h_pid/max", param_pid_hdg.max_output) ) {
+			ROS_WARN( "No parameter set for \"h_pid/max\", using: %0.2f", param_pid_hdg.max_output);
 		}
 
-		ROS_INFO( "Setting h_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", ang_h_pid.Kp, ang_h_pid.Ki, ang_h_pid.Kd, ang_h_pid.min_output, ang_h_pid.max_output);
+		ROS_INFO( "Setting h_pid to: [%0.2f, %0.2f, %0.2f; %0.2f, %0.2f]", param_pid_hdg.Kp, param_pid_hdg.Ki, param_pid_hdg.Kd, param_pid_hdg.min_output, param_pid_hdg.max_output);
 	}
 
 	ROS_INFO("[Flight Parameters]");
@@ -601,24 +586,24 @@ int main(int argc, char **argv)
 	ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
 		( "/mavros/state", 10, state_cb);
 	ros::Subscriber local_pos_sub = nh.subscribe<geometry_msgs::TransformStamped>
-		(positionInput, 10, local_pos_cb);
+		(param_input_position, 10, local_pos_cb);
 	ros::Subscriber waypoint_sub = nh.subscribe<geometry_msgs::PoseArray>
-		(waypointInput, 10, waypoint_cb);
+		(param_input_waypoint, 10, waypoint_cb);
 	ros::Subscriber ext_pos_sub = nh.subscribe<geometry_msgs::PoseStamped>
-		(externalInput, 10, ext_pos_cb);
+		(param_input_external, 10, ext_pos_cb);
 
 	//Publishers
 	//ros::Publisher vel_pub = nh.advertise<mavros_msgs::PositionTarget>
 	//	(velocityOutput, 10);
 	ros::Publisher vel_pub = nh.advertise<geometry_msgs::TwistStamped>
-		(velocityOutputTopic, 10);
+		(param_output_goal_velocity, 10);
 	ros::Publisher pos_pub = nh.advertise<geometry_msgs::PoseStamped>
-		(positionOutputTopic, 10);
+		(param_output_goal_position, 10);
 
 	ros::Publisher wp_confirm_pub = nh.advertise<std_msgs::Empty>
-		(waypointConfirm, 1);	//Only really want this to be sent or read once at a time.
+		(param_output_confirm_waypont, 1);	//Only really want this to be sent or read once at a time.
 	ros::Publisher mission_confirm_pub = nh.advertise<std_msgs::Empty>
-		(missionConfirm, 1);
+		(param_output_confirm_mission, 1);
 
 	//Services
 	ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>
@@ -631,15 +616,15 @@ int main(int argc, char **argv)
 		("activate", activate_srv);
 
 	//TF
-    tfbr = new tf::TransformBroadcaster();
-    tfln = new tf::TransformListener();
+    tf::TransformBroadcaster tfbr;
+	tf::TransformListener tfln;
 
 	//================================//
 	// Load Waypoints                 //
 	//================================//
 
 	//TODO: Remove this and test out the callback method
-
+	/*
 	geometry_msgs::Vector3 wp_heading;
 	wp_heading.z = 0.0;
 
@@ -667,7 +652,7 @@ int main(int argc, char **argv)
 	waypointList.push_back(waypointFiller);
 	waypointFiller.position.y = 0;
 	waypointList.push_back(waypointFiller);
-
+	*/
 
 	//================================//
 	// Wait for Connection            //
@@ -678,7 +663,7 @@ int main(int argc, char **argv)
 		ROS_INFO_THROTTLE( MSG_FREQ, "[CMD] Breadcrumb is waiting for connection to mav..." );
 		//ROS_INFO( "SEQ: %i", currentPose.header.seq );
 
-		if( posTimeout < ( ros::Time::now() - currentPose.header.stamp ).toSec() ) {
+		if( param_system_timeout_position < ( ros::Time::now() - currentPose.header.stamp ).toSec() ) {
 			inputStreamPosition = false;
 			posCounter = 0;
 		} else {
@@ -689,7 +674,7 @@ int main(int argc, char **argv)
 			}
 		}
 
-		if( stateTimeout < ( ros::Time::now() - currentState.header.stamp ).toSec() ) {
+		if( param_system_timeout_state < ( ros::Time::now() - currentState.header.stamp ).toSec() ) {
 			inputStreamState = false;
 			stateCounter = 0;
 		} else {
@@ -724,7 +709,7 @@ int main(int argc, char **argv)
 			startSystem = true;
 
 		//Check for recent messages to make sure there is a constant stream of data
-		if( posTimeout < ( ros::Time::now() - currentPose.header.stamp ).toSec() ) {
+		if( param_system_timeout_position < ( ros::Time::now() - currentPose.header.stamp ).toSec() ) {
 			inputStreamPosition = false;
 			posCounter = 0;
 			ROS_ERROR_THROTTLE(MSG_FREQ, "[CMD] Timeout! No fresh positional data is avaliable!");
@@ -734,7 +719,7 @@ int main(int argc, char **argv)
 				inputStreamPosition = true;
 		}
 
-		if( stateTimeout < ( ros::Time::now() - currentState.header.stamp ).toSec() ) {
+		if( param_system_timeout_state < ( ros::Time::now() - currentState.header.stamp ).toSec() ) {
 			inputStreamState = false;
 			stateCounter = 0;
 			ROS_ERROR_THROTTLE(MSG_FREQ, "[CMD] Timeout! No fresh system state is avaliable!");
@@ -1040,13 +1025,14 @@ int main(int argc, char **argv)
 
 		tf::Transform transformGoal;
 		tf::poseMsgToTF(currentGoal, transformGoal);
-		tfbr->sendTransform( tf::StampedTransform(transformGoal, ros::Time::now(), "world", "breadcrumb/goal") );
+		tfbr.sendTransform( tf::StampedTransform(transformGoal, timestamp, "world", "breadcrumb/goal") );
 
 		tf::StampedTransform transformGoalBody;
 
 		try {
 			//Get the latest pose of the fcu in the world
-			tfln->lookupTransform("/uav/hdg_link", "/breadcrumb/goal", ros::Time(0), transformGoalBody);
+			tfln.waitForTransform("/uav/hdg_link", "/breadcrumb/goal", timestamp, ros::Duration(0.1));
+			tfln.lookupTransform("/uav/hdg_link", "/breadcrumb/goal", timestamp, transformGoalBody);
 		}
 
 		catch (tf::TransformException ex) {
@@ -1066,14 +1052,14 @@ int main(int argc, char **argv)
 			//Velocity
 			if( sendVelocity ) {	// Only bother to calculate if the requested
 				//WorldFrame
-				//outputVelocity.twist.linear.x = pos_x_pid.step(currentGoal.position.x, currentPose.pose.position.x);
-				//outputVelocity.twist.linear.y = pos_y_pid.step(currentGoal.position.y, currentPose.pose.position.y);
-				//outputVelocity.twist.linear.z = pos_z_pid.step(currentGoal.position.z, currentPose.pose.position.z);
+				//outputVelocity.twist.linear.x = param_pid_pos_x.step(currentGoal.position.x, currentPose.pose.position.x);
+				//outputVelocity.twist.linear.y = param_pid_pos_y.step(currentGoal.position.y, currentPose.pose.position.y);
+				//outputVelocity.twist.linear.z = param_pid_pos_z.step(currentGoal.position.z, currentPose.pose.position.z);
 
 				//Body Frame
-				outputVelocity.twist.linear.x = pos_x_pid.step(currentGoalBody.position.x, 0.0);
-				outputVelocity.twist.linear.y = pos_y_pid.step(currentGoalBody.position.y, 0.0);
-				outputVelocity.twist.linear.z = pos_z_pid.step(currentGoalBody.position.z, 0.0);
+				outputVelocity.twist.linear.x = param_pid_pos_x.step(currentGoalBody.position.x, 0.0);
+				outputVelocity.twist.linear.y = param_pid_pos_y.step(currentGoalBody.position.y, 0.0);
+				outputVelocity.twist.linear.z = param_pid_pos_z.step(currentGoalBody.position.z, 0.0);
 
 				double goalHeading = toEuler( currentGoal.orientation ).z;
 				double currentHeading = toEuler( currentPose.pose.orientation ).z;
@@ -1084,7 +1070,7 @@ int main(int argc, char **argv)
 				if( ( goalHeading - currentHeading ) > M_PI )
 					goalHeading -= 2 * M_PI;
 
-				outputVelocity.twist.angular.z = ang_h_pid.step( goalHeading, currentHeading);
+				outputVelocity.twist.angular.z = param_pid_hdg.step( goalHeading, currentHeading);
 			}
 		} else {
 			ROS_WARN_THROTTLE(MSG_FREQ, "[NAV] Commanding the mav to stay still..." );

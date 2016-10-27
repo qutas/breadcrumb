@@ -3,10 +3,6 @@
 
 #include <ros/ros.h>
 
-//#include <tf/transform_broadcaster.h>
-//#include <tf/transform_listener.h>
-//#include <tf/transform_datatypes.h>
-
 #include <std_msgs/Empty.h>
 
 #include <geometry_msgs/PoseStamped.h>
@@ -24,7 +20,6 @@
 #include <mavros_msgs/CommandBool.h>
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
-//#include <mavros_msgs/PositionTarget.h>
 
 #include <string.h>
 #include <math.h>
@@ -127,10 +122,6 @@ bool changedMode = false;	//Should be set on each mode change to allow gracefull
 bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
 ros::Time lastRequest = ros::Time(0);
-
-//TF
-tf::TransformBroadcaster* tfbr;
-tf::TransformListener* tfln;
 
 /*
 Services:
