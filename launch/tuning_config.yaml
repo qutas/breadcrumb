@@ -16,7 +16,7 @@ tf:
   #Frame that the UAV and goal exist in
   world_frame: "world"
   #Name of the UAV frame
-  body_frame: "uav/hdg_link"
+  body_frame: "fcu"
   #The name that the goal frame will be given
   goal_frame: "breadcrumb_goal"
 

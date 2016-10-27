@@ -591,7 +591,7 @@ int main(int argc, char **argv)
 
     while(ros::ok() && ( !currentState.connected || !inputStreamState || !inputStreamPosition ) ) {
 		//Wait for the transform to be available
-		if( tfln.waitForTransform( param_tf_world, param_tf_body, ros::Time::now(), ros::Duration( param_system_nav_rate ) ) ) {
+		if( tfln.waitForTransform( param_tf_world, param_tf_body, ros::Time::now(), ros::Duration( 0.5 ) ) ) {
 			if( !inputStreamPosition )
 				ROS_INFO("[CMD] Position stream acheived!");
 
@@ -624,6 +624,8 @@ int main(int argc, char **argv)
     }
 
 	lastRequest = ros::Time::now();
+
+	ROS_INFO( "Breadcrumb is in standby, awaiting activation..." );
 
 	//================================//
 	// Main Loop                      //
@@ -764,8 +766,6 @@ int main(int argc, char **argv)
 						startSystem = false;
 						ROS_INFO( "[CMD] Breadcrumb is now active" );
 					}
-				} else {
-					ROS_INFO( "Breadcrumb is in standby, awaiting activation..." );
 				}
 
 				break;

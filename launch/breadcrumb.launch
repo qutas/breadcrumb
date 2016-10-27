@@ -1,7 +1,6 @@
 <launch>
 	<node pkg="breadcrumb" type="breadcrumb_node" name="breadcrumb" clear_params="true" output="screen">
 		<!-- Connection Parameters -->
-		<param name="position_input" value="/vicon/cicada/cicada" type="str"/>
 		<param name="external_input" value="reference/external" type="str"/>
 
 		<param name="position_goal" value="goal/position" type="str" />
