@@ -79,9 +79,8 @@ bool set_mode_srv(breadcrumb::SetMode::Request &req, breadcrumb::SetMode::Respon
 				waypointCounter = -1;
 				ROS_WARN( "[NAV] Halting mission, switching to: %s", modeNames.at( navCurrentMode ).c_str());
 			} else if( req.mode_req == NAV_MODE_MISSION ) {
-				navCurrentMode = req.mode_req;
 				res.success = true;
-				currentGoal = waypointList.at(waypointCounter);
+				missionResume = true;
 				ROS_WARN( "[NAV] Resuming mission, switching to: %s", modeNames.at( navCurrentMode ).c_str());
 			} else {
 				ROS_ERROR( "[NAV] Mission in progress, refusing mode switch to: %s", modeNames.at( req.mode_req ).c_str());
@@ -180,43 +179,10 @@ void state_cb(const mavros_msgs::State::ConstPtr& msg) {
 	currentState = *msg;
 }
 
-void local_pos_cb(const geometry_msgs::TransformStamped::ConstPtr& msg) {
-	currentPose.header = msg->header;
-	currentPose.header.frame_id = msg->child_frame_id;
-
-	currentPose.pose.position.x = msg->transform.translation.x;
-	currentPose.pose.position.y = msg->transform.translation.y;
-	currentPose.pose.position.z = msg->transform.translation.z;
-
-	currentPose.pose.orientation.w = msg->transform.rotation.w;
-	currentPose.pose.orientation.x = msg->transform.rotation.x;
-	currentPose.pose.orientation.y = msg->transform.rotation.y;
-	currentPose.pose.orientation.z = msg->transform.rotation.z;
-
-	/*
-	//Create a transform for the "base link" of the mav (One that has no roll or pitch)
-	tf::Transform transformRef;
-	tf::Transform transformBase;
-	tf::Quaternion qBase;
-	tf::Quaternion qRef;
-
-	double heading = toEuler( currentPose.pose.orientation ).z;
-	qRef.setRPY(0.0, 0.0, 0.0 );
-	transformRef.setRotation( qRef );
-	qBase.setRPY(0.0, 0.0, heading );
-	transformBase.setRotation( qBase );
-
-	transformBase.setOrigin( tf::Vector3( currentPose.pose.position.x, currentPose.pose.position.y, currentPose.pose.position.z ) );
-	transformRef.setOrigin( tf::Vector3( currentPose.pose.position.x, currentPose.pose.position.y, currentPose.pose.position.z ) );
-
-	tfbr->sendTransform( tf::StampedTransform(transformRef, ros::Time::now(), "world", "fcu/ref") );
-	tfbr->sendTransform( tf::StampedTransform(transformBase, ros::Time::now(), "world", "fcu/base") );
-	*/
-}
-
 void waypoint_cb(const geometry_msgs::PoseArray::ConstPtr& msg) {
 	ROS_INFO("Received new waypoint list...");
 
+	//TODO: Might have an array of transforms instead
 	waypointList = msg->poses;
 	waypointCounter = -1;
 
@@ -296,6 +262,38 @@ bool comparePose(geometry_msgs::Pose goal, geometry_msgs::Pose current) {
 	return reached;
 }
 
+bool comparePositionHeading( const tf::Transform& goal, const tf::Transform& current ) {
+	bool reached = false;
+	
+	//Check the distance from the current position to the goal position
+	if( fabs( current.getOrigin().distance( goal.getOrigin() ) ) < waypointRadius ) {
+		//Get RPY from current and goal
+		geometry_msgs::Vector3 rotGoal;
+		tf::Matrix3x3(goal.getRotation()).getRPY(rotGoal.x, rotGoal.y, rotGoal.z);
+		
+		geometry_msgs::Vector3 rotCurrent;
+		tf::Matrix3x3(current.getRotation()).getRPY(rotCurrent.x, rotCurrent.y, rotCurrent.z);
+		
+		//Compare the current rotation to the goal rotation
+		if( fabs( rotCurrent.z - rotGoal.z ) <= headingAccuracy ) {
+			reached = true;
+		}
+	}
+	
+	return reached;
+}
+
+void setPositionHeading( tf::Transform& goal, const tf::Transform& current ) {
+	goal.setOrigin( current.getOrigin() );
+						
+	tf::Quaternion rot;
+	double roll, pitch, yaw;
+	tf::Matrix3x3( current.getRotation() ).getRPY( roll, pitch, yaw );
+
+	rot.setRPY( 0.0, 0.0, yaw);
+	goal.setRotation( rot );
+}
+
 //================================//
 // Main Function                  //
 //================================//
@@ -320,6 +318,11 @@ int main(int argc, char **argv)
 	std::string param_input_waypoint = "reference/wapoints";
 	std::string param_input_external = "reference/external";
 
+	//TODO: Add to params
+	std::string param_tf_world = "world";
+	std::string param_tf_body = "uav/hdg_link";
+	std::string param_tf_goal = "breadcrumb_goal";
+	
 	std::string param_output_goal_position = "goal/position_target";
 	std::string param_output_goal_velocity = "goal/velocity_target";
 
@@ -360,10 +363,13 @@ int main(int argc, char **argv)
 	disarm_cmd.request.value = false;
 
 	const std_msgs::Empty outputConfirm;
-
+	
+	
+	//==== Navigation Settings ====//
 	double navGoalTakeoffHeight = 1.0;
-
-	outputPosition.header.frame_id = "/world";
+	
+	tf::Transform goalTransform;
+	tf::Transform homeTransform;
 
 	//==== Logic Operators ====//
 	//bool changedNavMode = true;
@@ -551,25 +557,25 @@ int main(int argc, char **argv)
 	bool homeSetY = false;
 	bool homeSetZ = false;
 	bool homeSetH = false;
-	geometry_msgs::Vector3 tempHome;
+	double tempHomeX = 0.0;
+	double tempHomeY = 0.0;
+	double tempHomeZ = 0.0;
 	double tempHomeHdg = 0.0;
 
-	homeSetX = nh.getParam( "guidance/home_x", tempHome.x );
-	homeSetY = nh.getParam( "guidance/home_y", tempHome.y );
-	homeSetZ = nh.getParam( "guidance/home_z", tempHome.z );
+	homeSetX = nh.getParam( "guidance/home_x", tempHomeX );
+	homeSetY = nh.getParam( "guidance/home_y", tempHomeY );
+	homeSetZ = nh.getParam( "guidance/home_z", tempHomeZ );
+	homeSetH = nh.getParam( "guidance/home_h", tempHomeHdg );
 
-	if( homeSetX && homeSetY && homeSetZ ) {
+	if( homeSetX && homeSetY && homeSetZ && homeSetH ) {
 		homeSet = true;
+		
+		homeTransform.setOrigin( tf::Vector3( tempHomeX, tempHomeY, tempHomeZ ) );
+		tf::Quaternion rot;
+		rot.setRPY( 0.0, 0.0, tempHomeHdg );
+		homeTransform.setRotation( rot );
 
-		navGoalHome.position.x = tempHome.x;
-		navGoalHome.position.y = tempHome.y;
-		navGoalHome.position.z = tempHome.z;
-
-		geometry_msgs::Vector3 rot;
-		nh.getParam( "guidance/home_h", rot.z );
-		navGoalHome.orientation = toQuaternion( rot );
-
-		ROS_INFO( "Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( navGoalHome.orientation ).z );
+		ROS_INFO( "Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", tempHomeX, tempHomeY, tempHomeZ, tempHomeHdg );
 	} else {
 		ROS_WARN( "No [HOME] set, will by dynamically set when mav is connected" );
 	}
@@ -585,8 +591,6 @@ int main(int argc, char **argv)
 	//Subscribers
 	ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
 		( "/mavros/state", 10, state_cb);
-	ros::Subscriber local_pos_sub = nh.subscribe<geometry_msgs::TransformStamped>
-		(param_input_position, 10, local_pos_cb);
 	ros::Subscriber waypoint_sub = nh.subscribe<geometry_msgs::PoseArray>
 		(param_input_waypoint, 10, waypoint_cb);
 	ros::Subscriber ext_pos_sub = nh.subscribe<geometry_msgs::PoseStamped>
@@ -597,8 +601,6 @@ int main(int argc, char **argv)
 	//	(velocityOutput, 10);
 	ros::Publisher vel_pub = nh.advertise<geometry_msgs::TwistStamped>
 		(param_output_goal_velocity, 10);
-	ros::Publisher pos_pub = nh.advertise<geometry_msgs::PoseStamped>
-		(param_output_goal_position, 10);
 
 	ros::Publisher wp_confirm_pub = nh.advertise<std_msgs::Empty>
 		(param_output_confirm_waypont, 1);	//Only really want this to be sent or read once at a time.
@@ -659,39 +661,43 @@ int main(int argc, char **argv)
 	//================================//
 
 	// Wait for FCU connection
+	ROS_INFO( "[CMD] Breadcrumb is waiting for connection to mav..." );
+	
     while(ros::ok() && ( !currentState.connected || !inputStreamState || !inputStreamPosition ) ) {
-		ROS_INFO_THROTTLE( MSG_FREQ, "[CMD] Breadcrumb is waiting for connection to mav..." );
-		//ROS_INFO( "SEQ: %i", currentPose.header.seq );
-
-		if( param_system_timeout_position < ( ros::Time::now() - currentPose.header.stamp ).toSec() ) {
-			inputStreamPosition = false;
-			posCounter = 0;
+		//Wait for the transform to be available
+		if( tfln.waitForTransform( param_tf_world, param_tf_body, ros::Time::now(), ros::Duration( param_system_nav_rate ) ) ) {
+			if( !inputStreamPosition )
+				ROS_INFO("[CMD] Position stream acheived!");
+				
+			inputStreamPosition = true;
 		} else {
-			posCounter++;
-			if( ( posCounter >= MSG_STREAM_STATE ) && !inputStreamPosition ) {
-				inputStreamPosition = true;
-				ROS_INFO("[CMD] Pose stream acheived!");
-			}
+			if( inputStreamPosition )
+				ROS_INFO("[CMD] Position stream lost!");
+				
+			inputStreamPosition = false;
 		}
 
-		if( param_system_timeout_state < ( ros::Time::now() - currentState.header.stamp ).toSec() ) {
-			inputStreamState = false;
-			stateCounter = 0;
-		} else {
+		//Wait for mavros state to be avaiable
+		if( ( ros::Time::now() - currentState.header.stamp ) < ros::Duration( param_system_timeout_state ) ) {
 			stateCounter++;
+			
 			if( (stateCounter >= MSG_STREAM_STATE) && !inputStreamState ) {
 				inputStreamState = true;
 				ROS_INFO("[CMD] State stream acheived!");
 			}
+		} else {
+			if( inputStreamState )
+				ROS_INFO("[CMD] State stream lost!");
+				
+			inputStreamState = false;
+			stateCounter = 0;
 		}
 
 		ros::spinOnce();
         rate.sleep();
     }
 
-
 	lastRequest = ros::Time::now();
-	currentGoal = currentPose.pose;
 
 	//TODO: This should be implemented into the main loop to watch for a lost connection to the mav
 	//TODO: Watch the Sequence on the pose stamped
@@ -702,31 +708,54 @@ int main(int argc, char **argv)
 	// Main Loop                      //
 	//================================//
 	while( ros::ok() && !terminate ) {
+		tf::Transform currentTransform;
+		ros::Time timestamp = ros::Time::now();
+	
 		//Flight Control State Machine //================================================================
 		//Allow remote starting of the system
 		//TODO: Anything?
-		if( currentState.mode == triggerMode )	//TODO: Set triggerMode to "NULL" to disable this feature
-			startSystem = true;
+		//if( currentState.mode == triggerMode )	//TODO: Set triggerMode to "NULL" to disable this feature
+		//	startSystem = true;
 
 		//Check for recent messages to make sure there is a constant stream of data
-		if( param_system_timeout_position < ( ros::Time::now() - currentPose.header.stamp ).toSec() ) {
-			inputStreamPosition = false;
-			posCounter = 0;
-			ROS_ERROR_THROTTLE(MSG_FREQ, "[CMD] Timeout! No fresh positional data is avaliable!");
+		
+		if( tfln.waitForTransform( param_tf_body, param_tf_world, timestamp, ros::Duration( param_system_nav_rate ) ) ) {
+			if( !inputStreamPosition )
+				ROS_INFO("[CMD] Position stream acheived!");
+				
+			inputStreamPosition = true;
+			
+			tf::StampedTransform currentTransformStamped;
+		
+			try {
+				tfln.lookupTransform(param_tf_body, param_tf_world, timestamp, currentTransformStamped);
+				currentTransform.setRotation( currentTransformStamped.getRotation() );
+				currentTransform.setOrigin( currentTransformStamped.getOrigin() );
+			
+			} catch (tf::TransformException ex ) {
+				  ROS_ERROR( "%s", ex.what() );
+			}
 		} else {
-			posCounter++;
-			if( ( posCounter >= MSG_STREAM_STATE ) && !inputStreamPosition )
-				inputStreamPosition = true;
+			if( inputStreamPosition )
+				ROS_INFO("[CMD] Position stream lost!");
+				
+			inputStreamPosition = false;
 		}
 
-		if( param_system_timeout_state < ( ros::Time::now() - currentState.header.stamp ).toSec() ) {
+		//Wait for mavros state to be avaiable
+		if( ( ros::Time::now() - currentState.header.stamp ) < ros::Duration( param_system_timeout_state ) ) {
+			stateCounter++;
+			
+			if( (stateCounter >= MSG_STREAM_STATE) && !inputStreamState ) {
+				inputStreamState = true;
+				ROS_INFO("[CMD] State stream acheived!");
+			}
+		} else {
+			if( inputStreamState )
+				ROS_INFO("[CMD] State stream lost!");
+				
 			inputStreamState = false;
 			stateCounter = 0;
-			ROS_ERROR_THROTTLE(MSG_FREQ, "[CMD] Timeout! No fresh system state is avaliable!");
-		} else {
-			stateCounter++;
-			if( ( stateCounter >= MSG_STREAM_STATE ) && !inputStreamState )
-				inputStreamState = true;
 		}
 
 		// If the system was running, but the mav has switched modes or disarmed
@@ -779,21 +808,17 @@ int main(int argc, char **argv)
 					//if( ( currentState.mode == "OFFBOARD" ) && ( currentState.armed ) ) {
 					if( ( currentState.mode == "STABILIZED" ) && ( currentState.armed ) ) {
 						//Set the current goal to hold position until the handover is complete (in case this is mid flight)
-						currentGoal = currentPose.pose;
-						floorHeight = currentPose.pose.position.z;
-
+						setPositionHeading( goalTransform, currentTransform );
+						
 						if( !homeSet ) {
-							geometry_msgs::Vector3 rot = toEuler( currentPose.pose.orientation );
+							//Set HOME to the current location + takeoff height
+							homeTransform = goalTransform;
+							homeTransform.setOrigin( homeTransform.getOrigin() + tf::Vector3( 0.0, 0.0, navGoalTakeoffHeight ) );
 
-							rot.x = 0;
-							rot.y = 0;
-							currentGoal.orientation = toQuaternion( rot );
-
-							navGoalHome = currentGoal;
-							navGoalHome.position.z += navGoalTakeoffHeight;
-
-							ROS_WARN( "[NAV] Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( currentGoal.orientation ).z );
+							ROS_WARN( "[NAV] Setting [HOME] coordinates to: [%0.2f, %0.2f, %0.2f]", homeTransform.getOrigin().getX(), homeTransform.getOrigin().getY(), homeTransform.getOrigin().getZ() );
 						}
+						
+						floorHeight = currentTransform.getOrigin().getZ();
 
 						ROS_INFO( "[CMD] Mav is armed and listening" );
 						navCurrentMode = NAV_MODE_SLEEP;
@@ -812,11 +837,11 @@ int main(int argc, char **argv)
 				if( changedMode ) {
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 					changedMode = false;
-					currentGoal = currentPose.pose;
+					
+					setPositionHeading( goalTransform, currentTransform );
+						
 					ROS_INFO( "[NAV] Commanding to hold position..." );
 				}
-
-				ROS_INFO_THROTTLE(MSG_FREQ, "Breadcrumb is conected, awaiting commands..." );
 
 				break;
 			case NAV_MODE_TAKEOFF:
@@ -828,22 +853,20 @@ int main(int argc, char **argv)
 						ROS_INFO( "Activating goal output" );
 						sendMovement = true;
 
-						navGoalTakeoff = currentPose.pose;
-						navGoalTakeoff.position.z = navGoalTakeoffHeight;
+						setPositionHeading( goalTransform, currentTransform );
+						goalTransform.setOrigin( goalTransform.getOrigin() + tf::Vector3( 0.0, 0.0, navGoalTakeoffHeight ) );
 
-						currentGoal = navGoalTakeoff;
-
-						ROS_INFO( "[NAV] Commanding the mav to head to [TAKEOFF]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalTakeoff.position.x, navGoalTakeoff.position.y, navGoalTakeoff.position.z, toEuler( navGoalTakeoff.orientation ).z );
+						ROS_INFO( "[NAV] Commanding the mav to head to [TAKEOFF]: [%0.2f, %0.2f, %0.2f; %0.2f]", goalTransform.getOrigin().getX(), goalTransform.getOrigin().getY(), goalTransform.getOrigin().getZ() );
 					} else { //Motor commands are active, but the mav might be on the ground?
-						ROS_WARN("The mav is already being controlled (and it seems like it should be flying!");
+						ROS_WARN("The mav is already being controlled (and it seems like it should be flying)!");
 						ROS_WARN("Commanding to hold position!");
-						currentGoal = currentPose.pose;
+						setPositionHeading( goalTransform, currentTransform );
 					}
 
 					changedMode = false;
 				}
 
-				if( comparePose( currentGoal, currentPose.pose ) ) {
+				if( comparePositionHeading( goalTransform, currentTransform ) ) {
 					ROS_INFO( "Reached takeoff goal!" );
 					navCurrentMode = NAV_MODE_SLEEP;
 					changedMode = true;
@@ -853,31 +876,35 @@ int main(int argc, char **argv)
 			case NAV_MODE_MISSION:
 				if( changedMode ) {	//Reset the waypoint counter if switching to mission mode
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
+				
 					waypointCounter = -1;
 					ROS_INFO("Begining waypoint mission...");
+					
 					changedMode = false;
 				}
 
 				if(waypointCounter == -1) {
 					waypointCounter = 0;
-					currentGoal = waypointList.at(waypointCounter);
-					ROS_INFO( "Heading to next waypoint: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
+					
+					tf::poseMsgToTF(waypointList.at(waypointCounter), goalTransform);
+					ROS_INFO( "Heading to next waypoint: [%0.2f, %0.2f, %0.2f]", goalTransform.getOrigin().getX(), goalTransform.getOrigin().getY(), goalTransform.getOrigin().getZ() );
 				}
 
-				if( comparePose( currentGoal, currentPose.pose ) ) {
+				if( comparePositionHeading( goalTransform, currentTransform ) ) {
 					waypointCounter++;
 
 					if( waypointCounter < waypointList.size() ) {
-						currentGoal = waypointList.at(waypointCounter);
+						tf::poseMsgToTF(waypointList.at(waypointCounter), goalTransform);
 
 						wp_confirm_pub.publish( outputConfirm );
 
-						ROS_INFO( "Heading to next waypoint: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
+						ROS_INFO( "Heading to next waypoint: [%0.2f, %0.2f, %0.2f]", goalTransform.getOrigin().getX(), goalTransform.getOrigin().getY(), goalTransform.getOrigin().getZ() );
 					} else {
 						waypointCounter = -1;
 
 						mission_confirm_pub.publish( outputConfirm );
 
+						//TODO: Should probably make this a function to make sure changedMode is always set
 						navCurrentMode = NAV_MODE_SLEEP;
 						changedMode = true;
 
@@ -891,11 +918,22 @@ int main(int argc, char **argv)
 				if( changedMode ) {
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 					changedMode = false;
-					currentGoal = currentPose.pose;
+					
+					setPositionHeading( goalTransform, currentTransform );
 					ROS_INFO( "[NAV] Commanding to hold position..." );
+					
+					
+					ROS_INFO( "Mission paused, waiting for resume..." );
+				}
+				
+				//Pass back to mission mode
+				if( missionResume ) {
+					tf::poseMsgToTF(waypointList.at(waypointCounter), goalTransform);
+					navCurrentMode = NAV_MODE_MISSION;
+					
+					missionResume = false;
 				}
 
-				ROS_INFO_THROTTLE(MSG_FREQ, "Mission paused, waiting for resume..." );
 
 				break;
 			case NAV_MODE_EXTERNAL:
@@ -911,20 +949,21 @@ int main(int argc, char **argv)
 					changedMode = true;
 					navCurrentMode = NAV_MODE_SLEEP;
 				} else {
-					currentGoal = externalPose.pose;
+					//TODO: Try to get rid of this
+					tf::poseMsgToTF(externalPose.pose, goalTransform);
 				}
 
 				break;
 			case NAV_MODE_HOME:
 				if( changedMode ) {
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
-					ROS_INFO( "Commanding the mav to head to [HOME]: [%0.2f, %0.2f, %0.2f; %0.2f]", navGoalHome.position.x, navGoalHome.position.y, navGoalHome.position.z, toEuler( navGoalHome.orientation ).z );
 					changedMode = false;
+					
+					goalTransform = homeTransform;
+					ROS_INFO( "Commanding the mav to head to [HOME]" );
 				}
 
-				currentGoal = navGoalHome;
-
-				if( comparePose( currentGoal, currentPose.pose ) ) {
+				if( comparePositionHeading( goalTransform, currentTransform ) ) {
 					changedMode = true;
 					navCurrentMode = NAV_MODE_SLEEP;
 				}
@@ -935,15 +974,19 @@ int main(int argc, char **argv)
 				if( changedMode ) {
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 
-					currentGoal = currentPose.pose;
-					currentGoal.position.z = floorHeight;
+					//Set the current goal to where the UAV is, but at the floor height
+					setPositionHeading( goalTransform, currentTransform );
+					
+					tf::Vector3 landPoint( goalTransform.getOrigin() );
+					landPoint.setZ( floorHeight );
+					goalTransform.setOrigin( landPoint );
 
-					ROS_INFO( "Commanding the mav to land: [%0.2f, %0.2f, %0.2f; %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z, toEuler( currentGoal.orientation ).z );
+					ROS_INFO( "Commanding the mav to land at current location..." );
 
 					changedMode = false;
 				}
 
-				if( comparePose( currentGoal, currentPose.pose ) ) {
+				if( comparePositionHeading( goalTransform, currentTransform ) ) {
 					ROS_INFO_THROTTLE( 2.0, "Reached landing goal!" );
 
 					changedMode = true;
@@ -975,10 +1018,7 @@ int main(int argc, char **argv)
 				if( changedMode ) {
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 					changedMode = false;
-
-					currentGoal = currentPose.pose;
-					ROS_WARN( "[CMD] Setting goal current coordinates: [%0.2f, %0.2f, %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z );
-
+					
 					sendMovement = false;
 					ROS_WARN( "[NAV] Disabling navigation!" );
 				}
@@ -990,8 +1030,8 @@ int main(int argc, char **argv)
 					systemOperational = true;
 					startSystem = false;
 
-					currentGoal = currentPose.pose;
-					ROS_WARN( "[CMD] Setting goal current coordinates: [%0.2f, %0.2f, %0.2f]", currentGoal.position.x, currentGoal.position.y, currentGoal.position.z );
+					setPositionHeading( goalTransform, currentTransform );
+					ROS_WARN( "[CMD] Setting goal current coordinates: [%0.2f, %0.2f, %0.2f]", currentTransform.getOrigin().getX(), currentTransform.getOrigin().getY(), currentTransform.getOrigin().getZ() );
 
 					sendMovement = true;
 					ROS_WARN( "[NAV] Enabling navigation!" );
@@ -1019,45 +1059,40 @@ int main(int argc, char **argv)
 
 
 		//Generate Commands //================================================================
-		ros::Time timestamp = ros::Time::now();
-
-		outputPosition.header.stamp = timestamp;
+		geometry_msgs::TwistStamped outputVelocity;
 		outputVelocity.header.stamp = timestamp;
-
-		tf::Transform transformGoal;
-		tf::poseMsgToTF(currentGoal, transformGoal);
-		tfbr.sendTransform( tf::StampedTransform(transformGoal, timestamp, "world", "breadcrumb/goal") );
-
-		tf::StampedTransform transformGoalBody;
-
-		try {
-			//Get the latest pose of the fcu in the world
-			tfln.waitForTransform("/uav/hdg_link", "/breadcrumb/goal", timestamp, ros::Duration(0.1));
-			tfln.lookupTransform("/uav/hdg_link", "/breadcrumb/goal", timestamp, transformGoalBody);
-		}
-
-		catch (tf::TransformException ex) {
-			ROS_ERROR( "%s",ex.what() );
-			ros::Duration( 1.0 ).sleep();
-			sendMovement = false;
-		}
-
-		geometry_msgs::Pose currentGoalBody;
-		tf::poseTFToMsg(transformGoalBody, currentGoalBody);
-
+			
 		if( sendMovement ) {
 
-			//Position
-			outputPosition.pose = currentGoal;
+			tfbr.sendTransform( tf::StampedTransform(goalTransform, timestamp, param_tf_world, param_tf_goal) );
 
+			tf::StampedTransform transformGoalBody;
+
+			try {
+				//Get the latest pose of the fcu in the world
+				tfln.waitForTransform(param_tf_body, param_tf_goal, timestamp, ros::Duration(0.1));
+				tfln.lookupTransform(param_tf_body, param_tf_goal, timestamp, transformGoalBody);
+			}
+
+			catch (tf::TransformException ex) {
+				ROS_ERROR( "%s",ex.what() );
+				ros::Duration( 1.0 ).sleep();
+				sendMovement = false;
+			}
+			
+			geometry_msgs::Pose currentGoalBody;
+			tf::poseTFToMsg(transformGoalBody, currentGoalBody);
+
+			
 			//Velocity
 			if( sendVelocity ) {	// Only bother to calculate if the requested
+			/* TODO: ALL BELOW
 				//TODO: WorldFrame
 				//outputVelocity.twist.linear.x = param_pid_pos_x.step(currentGoal.position.x, currentPose.pose.position.x);
 				//outputVelocity.twist.linear.y = param_pid_pos_y.step(currentGoal.position.y, currentPose.pose.position.y);
 				//outputVelocity.twist.linear.z = param_pid_pos_z.step(currentGoal.position.z, currentPose.pose.position.z);
 
-				//Body Frame
+				//TODO:Body Frame
 				outputVelocity.twist.linear.x = param_pid_pos_x.step(currentGoalBody.position.x, 0.0);
 				outputVelocity.twist.linear.y = param_pid_pos_y.step(currentGoalBody.position.y, 0.0);
 				outputVelocity.twist.linear.z = param_pid_pos_z.step(currentGoalBody.position.z, 0.0);
@@ -1076,27 +1111,25 @@ int main(int argc, char **argv)
 					goalHeading -= 2 * M_PI;
 
 				outputVelocity.twist.angular.z = param_pid_hdg.step( goalHeading, currentHeading);
+				*/
 			}
 		} else {
 			ROS_WARN_THROTTLE(MSG_FREQ, "[NAV] Commanding the mav to stay still..." );
-			//Zero out position
-			outputPosition.pose = currentGoal;
-
+			
 			//Zero out velocity
-			outputVelocity.twist.linear.x = 0.0;
-			outputVelocity.twist.linear.y = 0.0;
-			outputVelocity.twist.linear.z = 0.0;
-			outputVelocity.twist.angular.z = 0.0;
+			if( sendVelocity ) {
+				outputVelocity.twist.linear.x = 0.0;
+				outputVelocity.twist.linear.y = 0.0;
+				outputVelocity.twist.linear.z = 0.0;
+				outputVelocity.twist.angular.z = 0.0;
+			}
 		}
 
-		//Publish Data //================================================================
-		//pos_pub.publish( outputPosition );
-
+		//Publish Data //=========================================================
 		if( sendVelocity ) {
-			//TODO: global velocity
-
 			vel_pub.publish( outputVelocity );
 		}
+		
 		//Sleep //================================================================
 		rate.sleep();
 		ros::spinOnce();
