@@ -30,7 +30,7 @@
 //================================//
 
 #define MSG_FREQ 15.0
-#define MSG_STREAM_POS 20
+#define MSG_STREAM_EXT 20
 #define MSG_STREAM_STATE 5
 
 enum frameOutput {
@@ -113,8 +113,9 @@ bool homeSet = false;		//Used to track if the user has manually set a home locat
 bool sendMovement = false;	//Should be set to false when the UAV should not be moving
 bool terminate = false;
 bool changedMode = false;	//Should be set on each mode change to allow gracefull passover
-bool inputStreamPosition = false;	//Set to true when there haven't been any fresh inputs, will cause panic
-bool inputStreamState = false;	//Set to true when there haven't been any fresh inputs, will cause panic
+bool inputStreamPosition = false;	//Set to false when there haven't been any fresh inputs, will cause panic
+bool inputStreamExternal = false;	//Set to false when there haven't been any fresh inputs, will cause panic
+bool inputStreamState = false;	//Set to false when there haven't been any fresh inputs, will cause panic
 ros::Time lastRequest = ros::Time(0);
 bool missionResume = false;
 

@@ -7,9 +7,18 @@ system:
   nav_rate: 25.0
   #Timeout for the contact with the mav in seconds
   state_timeout: 5.0
-  pos_timeout: 0.2
+  ext_timeout: 2.0
   #Frame of reference to output velocity goals
   vel_frame: "body"
+
+# TF Settings
+tf:
+  #Frame that the UAV and goal exist in
+  world_frame: "world"
+  #Name of the UAV frame
+  body_frame: "uav/hdg_link"
+  #The name that the goal frame will be given
+  goal_frame: "breadcrumb_goal"
 
 # Flight Presets
 guidance:
@@ -20,6 +29,10 @@ guidance:
   home_h: 0.0
   #Takeoff Height will be were the UAV rises to on takeoff
   takeoff_height: 1.0
+  #Radius of the waypoint for it to be reached
+  wp_radius: 0.1
+  #Accuracy of the heading for the waypoint to be reached (in radians)
+  hdg_acc: 0.1
 
 # Horizontal Position Controller
 pos_xy_pid:
