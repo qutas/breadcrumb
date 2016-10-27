@@ -904,7 +904,8 @@ int main(int argc, char **argv)
 					changedMode = false;
 					ROS_INFO( "[NAV] Commanding to follow external pose goal..." );
 				}
-
+				
+				//TODO: This should be done in the main loop (just 1 message to say external is available, and then another when it drops)
 				if( 2.0 < ( ros::Time::now() - externalPose.header.stamp ).toSec() ) {
 					ROS_INFO( "[NAV] Rejecting external mode, no fresh external goal" );
 					changedMode = true;
@@ -1051,7 +1052,7 @@ int main(int argc, char **argv)
 
 			//Velocity
 			if( sendVelocity ) {	// Only bother to calculate if the requested
-				//WorldFrame
+				//TODO: WorldFrame
 				//outputVelocity.twist.linear.x = param_pid_pos_x.step(currentGoal.position.x, currentPose.pose.position.x);
 				//outputVelocity.twist.linear.y = param_pid_pos_y.step(currentGoal.position.y, currentPose.pose.position.y);
 				//outputVelocity.twist.linear.z = param_pid_pos_z.step(currentGoal.position.z, currentPose.pose.position.z);
@@ -1061,6 +1062,10 @@ int main(int argc, char **argv)
 				outputVelocity.twist.linear.y = param_pid_pos_y.step(currentGoalBody.position.y, 0.0);
 				outputVelocity.twist.linear.z = param_pid_pos_z.step(currentGoalBody.position.z, 0.0);
 
+				//TODO: TF HERE
+				//geometry_msgs::Vector3 rot;
+				//tf::Matrix3x3(currentTransform.getRotation()).getRPY(rot.x, rot.y, rot.z);
+				
 				double goalHeading = toEuler( currentGoal.orientation ).z;
 				double currentHeading = toEuler( currentPose.pose.orientation ).z;
 
@@ -1085,7 +1090,7 @@ int main(int argc, char **argv)
 		}
 
 		//Publish Data //================================================================
-		pos_pub.publish( outputPosition );
+		//pos_pub.publish( outputPosition );
 
 		if( sendVelocity ) {
 			//TODO: global velocity
