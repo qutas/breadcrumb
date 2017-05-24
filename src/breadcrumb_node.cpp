@@ -288,7 +288,7 @@ int main(int argc, char **argv)
 	double param_system_timeout_external = 1.0;
 	long stateCounter = 0;;
 	long externalPositionCounter = 0;
-	std::string param_system_frame_type_vel = "world";
+	std::string param_system_vel_frame = "world";
 	int velocityFrame = -1;
 
 	//==== MavROS Interface ====//
@@ -318,6 +318,7 @@ int main(int argc, char **argv)
 
 	//==== Navigation Settings ====//
 	double navGoalTakeoffHeight = 1.0;
+	double param_landing_velocity = 0.1;
 
 	tf::Transform goalTransform;
 	tf::Transform homeTransform;
@@ -404,24 +405,24 @@ int main(int argc, char **argv)
 	}
 
 	if( sendVelocity ) {
-		if( !nh.getParam( "system/vel_frame", param_system_frame_type_vel ) ) {
-		ROS_WARN( "No parameter set for \"system/vel_frame\", using: %s", param_system_frame_type_vel.c_str() );
+		if( !nh.getParam( "system/vel_frame", param_system_vel_frame ) ) {
+		ROS_WARN( "No parameter set for \"system/vel_frame\", using: %s", param_system_vel_frame.c_str() );
 		}
 
-		if(param_system_frame_type_vel == "world")
+		if(param_system_vel_frame == "world")
 			velocityFrame = VEL_FRAME_WORLD;
 
-		if(param_system_frame_type_vel == "body")
+		if(param_system_vel_frame == "body")
 			velocityFrame = VEL_FRAME_BODY;
 
 		if(velocityFrame == -1) {
-			ROS_ERROR( "Invalid velocity output frame: %s", param_system_frame_type_vel.c_str() );
+			ROS_ERROR( "Invalid velocity output frame: %s", param_system_vel_frame.c_str() );
 			ROS_ERROR( "Using default frame!" );
-			param_system_frame_type_vel = "body";
+			param_system_vel_frame = "body";
 			velocityFrame = VEL_FRAME_BODY;
 		}
 
-		ROS_INFO( "Setting velocity output frame to: %i (%s)", velocityFrame, param_system_frame_type_vel.c_str() );
+		ROS_INFO( "Setting velocity output frame to: %i (%s)", velocityFrame, param_system_vel_frame.c_str() );
 
 
 		ROS_INFO("[Position Controller]");
@@ -545,6 +546,11 @@ int main(int argc, char **argv)
 		ROS_WARN( "No parameter set for \"guidance/hdg_acc\", using: %0.2f", headingAccuracy );
 	}
 	ROS_INFO( "Setting heading accuracy to: %0.2f", headingAccuracy );
+
+	if( !nh.getParam( "guidance/vel_max_land", param_landing_velocity ) ) {
+		ROS_WARN( "No parameter set for \"guidance/vel_max_land\", using: %0.2f", param_landing_velocity);
+	}
+	ROS_INFO( "Setting max landing velocity to: %0.2f", param_landing_velocity );
 
 	ROS_INFO("[Finished Loading Parameters]");
 
@@ -910,7 +916,6 @@ int main(int argc, char **argv)
 
 				break;
 			case NAV_MODE_LAND:
-				//TODO: Should check the current position to know when to cut velocity, or to disarm when on the ground.
 				if( changedMode ) {
 					ROS_WARN("[NAV] Entered %s mode", modeNames.at( navCurrentMode ).c_str() );
 
@@ -1003,66 +1008,73 @@ int main(int argc, char **argv)
 		outputVelocity.header.stamp = timestamp;
 
 		if( sendMovement ) {
-
 			tfbr.sendTransform( tf::StampedTransform(goalTransform, timestamp, param_tf_world, param_tf_goal) );
 
-			tf::StampedTransform transformGoalBody;
-
-			try {
-				//Get the latest pose of the fcu in the world
-				tfln.waitForTransform(param_tf_body, param_tf_goal, timestamp, ros::Duration(0.1));
-				tfln.lookupTransform(param_tf_body, param_tf_goal, timestamp, transformGoalBody);
-			}
-
-			catch (tf::TransformException ex) {
-				ROS_ERROR( "%s",ex.what() );
-				ros::Duration( 1.0 ).sleep();
-				sendMovement = false;
-			}
-
-			geometry_msgs::Pose currentGoalBody;
-			tf::poseTFToMsg(transformGoalBody, currentGoalBody);
-
-
-			//Velocity
+			//Velocity Control
 			if( sendVelocity ) {	// Only bother to calculate if the requested
-			/* TODO: ALL BELOW
-				//TODO: WorldFrame
-				//outputVelocity.twist.linear.x = param_pid_pos_x.step(currentGoal.position.x, currentPose.pose.position.x);
-				//outputVelocity.twist.linear.y = param_pid_pos_y.step(currentGoal.position.y, currentPose.pose.position.y);
-				//outputVelocity.twist.linear.z = param_pid_pos_z.step(currentGoal.position.z, currentPose.pose.position.z);
+				//XYZ Control
+				if( velocityFrame == VEL_FRAME_WORLD ) {
+					//WorldFrame
+					outputVelocity.twist.linear.x = param_pid_pos_x.step( goalTransform.getOrigin().getX(), currentTransform.getOrigin().getX() );
+					outputVelocity.twist.linear.y = param_pid_pos_y.step( goalTransform.getOrigin().getY(), currentTransform.getOrigin().getY() );
+					outputVelocity.twist.linear.z = param_pid_pos_z.step( goalTransform.getOrigin().getZ(), currentTransform.getOrigin().getZ() );
+				} else if ( velocityFrame == VEL_FRAME_BODY ) {
+					//Body Frame
+					tf::StampedTransform transformGoalBodyStamped;
 
-				//TODO:Body Frame
-				outputVelocity.twist.linear.x = param_pid_pos_x.step(currentGoalBody.position.x, 0.0);
-				outputVelocity.twist.linear.y = param_pid_pos_y.step(currentGoalBody.position.y, 0.0);
-				outputVelocity.twist.linear.z = param_pid_pos_z.step(currentGoalBody.position.z, 0.0);
+					try {
+						//Get the latest pose of the fcu in the world
+						tfln.waitForTransform(param_tf_body, param_tf_goal, timestamp, ros::Duration(0.1));
+						tfln.lookupTransform(param_tf_body, param_tf_goal, timestamp, transformGoalBodyStamped);
+					}
 
-				//TODO: TF HERE
-				//geometry_msgs::Vector3 rot;
-				//tf::Matrix3x3(currentTransform.getRotation()).getRPY(rot.x, rot.y, rot.z);
+					catch (tf::TransformException ex) {
+						ROS_ERROR( "%s",ex.what() );
+						sendMovement = false;
+					}
 
-				double goalHeading = toEuler( currentGoal.orientation ).z;
-				double currentHeading = toEuler( currentPose.pose.orientation ).z;
+					outputVelocity.twist.linear.x = param_pid_pos_x.step( transformGoalBodyStamped.getOrigin().getX(), 0.0);
+					outputVelocity.twist.linear.y = param_pid_pos_y.step( transformGoalBodyStamped.getOrigin().getY(), 0.0);
+					outputVelocity.twist.linear.z = param_pid_pos_z.step( transformGoalBodyStamped.getOrigin().getZ(), 0.0);
+				} else {
+					ROS_ERROR( "Unknown velocity control frame!" );
+				}
 
-				if( ( goalHeading - currentHeading ) < -M_PI )
-					goalHeading += 2 * M_PI;
+				//Heading Control
+				geometry_msgs::Vector3 rotCurrent;
+				geometry_msgs::Vector3 rotGoal;
+				tf::Matrix3x3( currentTransform.getRotation() ).getRPY(rotCurrent.x, rotCurrent.y, rotCurrent.z);
+				tf::Matrix3x3( goalTransform.getRotation() ).getRPY(rotGoal.x, rotGoal.y, rotGoal.z);
 
-				if( ( goalHeading - currentHeading ) > M_PI )
-					goalHeading -= 2 * M_PI;
+				if( ( rotGoal.z - rotCurrent.z ) < -M_PI )
+					rotGoal.z += 2 * M_PI;
 
-				outputVelocity.twist.angular.z = param_pid_hdg.step( goalHeading, currentHeading);
-				*/
+				if( ( rotGoal.z - rotCurrent.z ) > M_PI )
+					rotGoal.z -= 2 * M_PI;
+
+				outputVelocity.twist.angular.z = param_pid_hdg.step( rotGoal.z, rotCurrent.z);
+
+				if( navCurrentMode == NAV_MODE_LAND ) {
+					if( fabs( outputVelocity.twist.linear.z ) < ( -param_landing_velocity ) ) {
+						outputVelocity.twist.linear.z = param_landing_velocity;
+					}
+
+					if( fabs( outputVelocity.twist.linear.z ) > 0.0 ) {
+						ROS_WARN_THROTTLE( MSG_FREQ, "Attempted to climb during landing, preventing climb" );
+						outputVelocity.twist.linear.z = 0.0;
+					}
+				}
 			}
 		} else {
 			ROS_WARN_THROTTLE(MSG_FREQ, "[NAV] Commanding the mav to stay still..." );
 
 			//Zero out velocity
-			if( sendVelocity ) {
-				outputVelocity.twist.linear.x = 0.0;
-				outputVelocity.twist.linear.y = 0.0;
-				outputVelocity.twist.linear.z = 0.0;
-				outputVelocity.twist.angular.z = 0.0;
-			}
+			outputVelocity.twist.linear.x = 0.0;
+			outputVelocity.twist.linear.y = 0.0;
+			outputVelocity.twist.linear.z = 0.0;
+			outputVelocity.twist.angular.z = 0.0;
+
+			//TODO: Do the PID values need to be reset here?
 		}
 
 		//Publish Data //=========================================================

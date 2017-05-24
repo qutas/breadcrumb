@@ -16,7 +16,7 @@ tf:
   #Frame that the UAV and goal exist in
   world_frame: "world"
   #Name of the UAV frame
-  body_frame: "fcu"
+  body_frame: "uav/hdg_link"
   #The name that the goal frame will be given
   goal_frame: "breadcrumb_goal"
 
@@ -33,6 +33,8 @@ guidance:
   wp_radius: 0.1
   #Accuracy of the heading for the waypoint to be reached (in radians)
   hdg_acc: 0.1
+  #Maximum vertical landing velocity (in m/s, absolute value)
+  vel_max_land: 0.2
 
 # Horizontal Position Controller
 pos_xy_pid:
