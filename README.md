@@ -1,4 +1,8 @@
 # breadcrumb
-A velocity-based guidance system for indoor UAV applications in ROS
+An A* pathplanner for grid-based navigation
 
-This package provides a small amount of logic to allow for waypoint navigation in an any environment, provided there is some form of local position estimation.
+## Usage
+This node listens for an OccupancyGrid and will advertise a service which can be called to do path planning within this grid space
+
+## Credit
+This package utilizes source code developed by [github user daancode](https://github.com/daancode/a-star).

@@ -1,0 +1,18 @@
+# Sets the pathfinding heuristic to use
+# Request:
+#   heuristic:
+#     - The requested heuristic to use
+#     - Use the pre-defined values below
+# Response:
+#   success:
+#     - Information on whether the set was successful or not
+
+uint8 HEURISTIC_MANHATTAN = 0
+uint8 HEURISTIC_EUCLIDEAN = 1
+uint8 HEURISTIC_OCTAGONAL = 2
+
+uint8 heuristic
+
+---
+
+bool success

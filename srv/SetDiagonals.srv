@@ -1,0 +1,13 @@
+# Toggles between allowing diagonals during pathfinding
+# Request:
+#   allow_diagonals:
+#     - Set to true to allow the use of diagonal movements
+# Response:
+#   success:
+#     - Information on whether the set was successful or not
+
+bool allow_diagonals
+
+---
+
+bool success

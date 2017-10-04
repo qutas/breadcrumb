@@ -1,0 +1,22 @@
+# Calculates a path between two points
+# Request:
+#   start:
+#     - Starting point on the grid (in meters)
+#     - Z value is ignored
+#     - In the grids parent frame
+#   end:
+#     - Ending point on the grid (in meters)
+#     - Z value is ignored
+#     - In the grids parent frame
+# Response:
+#   path:
+#     - List of poses returned in the grid's parent frame
+#     - Oriented facing towards the next point
+#     - Empty if no path was found
+
+geometry_msgs/Vector3 start
+geometry_msgs/Vector3 end
+
+---
+
+geometry_msgs/PoseArray path
