@@ -112,8 +112,7 @@ catkin_package(
 #  LIBRARIES kinetic_sample_sub_cpp
 #  CATKIN_DEPENDS message_runtime
 #  DEPENDS system_lib
-  DEPENDS
-  breadcrumb_generate_messages_cpp
+#  DEPENDS
 )
 
 ###########
@@ -136,7 +135,7 @@ add_library(astar src/AStar/AStar.cpp)
 add_dependencies(astar ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 add_library(breadcrumb src/breadcrumb/breadcrumb.cpp)
-add_dependencies(breadcrumb breadcrumb_generate_messages_cpp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(breadcrumb breadcrumb_generate_messages_cpp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} breadcrumb_generate_messages_cpp)
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
