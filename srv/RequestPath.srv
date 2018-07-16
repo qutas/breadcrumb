@@ -14,8 +14,8 @@
 #     - Oriented facing towards the next point
 #     - Empty if no path was found
 
-geometry_msgs/Vector3 start
-geometry_msgs/Vector3 end
+geometry_msgs/Point start
+geometry_msgs/Point end
 
 ---
 

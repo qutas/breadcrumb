@@ -1,11 +1,10 @@
+<?xml version='1.0'?>
 <launch>
 	<node pkg="breadcrumb" type="breadcrumb_node" name="breadcrumb" clear_params="true" output="screen">
-		<param name="topic_reference_grid" value="grid" type="str" />
-		<param name="topic_path_visualization" value="path" type="str" />
-
-		<param name="do_visualization" value="true" type="bool" />
-		<param name="heuristic" value="euclidean" type="str" />
+		<param name="search_heuristic" value="1" type="int" />
 		<param name="allow_diagonals" value="true" type="bool" />
 		<param name="obstacle_threshold" value="50" type="int" />
+
+		<!--remap from="grid" to="grid" /-->
 	</node>
 </launch>

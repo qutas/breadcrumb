@@ -1,4 +1,4 @@
-#include "AStar/AStar.h"
+#include <breadcrumb/AStar.h>
 #include <algorithm>
 
 using namespace std::placeholders;

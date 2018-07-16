@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   tf2
   message_generation
+  dynamic_reconfigure
 )
 
 ## System dependencies are found with CMake's conventions
@@ -60,8 +61,6 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
   FILES
   RequestPath.srv
-  SetDiagonals.srv
-  SetHeuristic.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -93,10 +92,9 @@ generate_messages(
 ##     and list every .cfg file to be processed
 
 ## Generate dynamic reconfigure parameters in the 'cfg' folder
-# generate_dynamic_reconfigure_options(
-#   cfg/DynReconf1.cfg
-#   cfg/DynReconf2.cfg
-# )
+generate_dynamic_reconfigure_options(
+  cfg/AStarParams.cfg
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -131,19 +129,19 @@ include_directories(
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigures
-add_library(astar src/AStar/AStar.cpp)
-add_dependencies(astar ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_library(${PROJECT_NAME}_astar src/breadcrumb/AStar.cpp)
+add_dependencies(${PROJECT_NAME}_astar ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-add_library(breadcrumb src/breadcrumb/breadcrumb.cpp)
-add_dependencies(breadcrumb breadcrumb_generate_messages_cpp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} breadcrumb_generate_messages_cpp)
+add_library(${PROJECT_NAME} src/breadcrumb/breadcrumb.cpp)
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_generate_messages_cpp ${PROJECT_NAME}_gencfg ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_executable(breadcrumb_node src/breadcrumb_node.cpp)
-add_dependencies(breadcrumb_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_executable(${PROJECT_NAME}_node src/breadcrumb_node.cpp)
+add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -152,8 +150,9 @@ add_dependencies(breadcrumb_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EX
 # set_target_properties(${PROJECT_NAME}_node PROPERTIES OUTPUT_NAME node PREFIX "")
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(breadcrumb astar ${catkin_LIBRARIES})
-target_link_libraries(breadcrumb_node breadcrumb ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}_astar ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} ${PROJECT_NAME}_astar ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME} ${catkin_LIBRARIES})
 
 #############
 ## Install ##
