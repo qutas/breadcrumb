@@ -76,7 +76,7 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 		ROS_ERROR("[Breadcrumb] Requested start/end out of bounds");
 	}
 
-	if(path.size() > 0) {
+	if(path.size() > 1) {
 		if( ( path[path.size() - 1].x == start_i ) &&
 			( path[path.size() - 1].y == start_j ) &&
 			( path[0].x == end_i ) &&
@@ -115,6 +115,8 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 		} else {
 			ROS_ERROR("[Breadcrumb] No possible solution found!");
 		}
+	} else if(path.size() == 1) {
+		ROS_WARN("[Breadcrumb] 1-step path detected, no planning required!");
 	} else {
 		ROS_ERROR("[Breadcrumb] Path finding failed to run!");
 	}

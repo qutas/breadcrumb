@@ -10,6 +10,15 @@ catkin_make
 source ~/catkin_ws/devel/setup.bash
 ```
 
+#### Updating
+```sh
+roscd breadcrumb
+git pull
+cd ~/catkin_ws
+catkin_make
+source ~/catkin_ws/devel/setup.bash
+```
+
 ## Usage
 This node listens for an OccupancyGrid and will advertise a service which can be called to do path planning within this grid space
 
