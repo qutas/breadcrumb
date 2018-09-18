@@ -32,6 +32,7 @@ class Breadcrumb {
 
 		bool flag_got_grid_;
 		int param_obstacle_threshold_;
+		bool param_calc_sparse_;
 
 	public:
 		Breadcrumb( void );

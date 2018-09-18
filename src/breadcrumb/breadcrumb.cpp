@@ -30,6 +30,7 @@ Breadcrumb::~Breadcrumb() {
 
 void Breadcrumb::callback_cfg_settings( breadcrumb::AStarParamsConfig &config, uint32_t level ) {
 	param_obstacle_threshold_ = config.obstacle_threshold;
+	param_calc_sparse_ = config.calc_sparse_path;
 
 	astar_.setDiagonalMovement(config.allow_diagonals);
 
@@ -84,6 +85,8 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 
 			ROS_INFO("[Breadcrumb] Solution found!");
 
+			int sk_last = path.size()-1;
+
 			for(int k=path.size()-1; k>=0; k--) {
 				geometry_msgs::Pose step;
 
@@ -108,10 +111,37 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 					//This is the last value in the set, use the same orientation as the second last value
 					step.orientation = res.path.poses.back().orientation;
 				}
+
 				res.path.poses.push_back(step);
 
 				ROS_DEBUG("[Breadcrumb] Path: %d, %d", path[k].x, path[k].y);
+
+
+				if( param_calc_sparse_ && (sk_last > 0) ) {
+					//Calculate the gradient from the last sparse step (sk_last) to k.
+					double skm = ( (double)(path[k].y - path[sk_last].y) ) / ( (double)(path[k].x - path[sk_last].x) );
+
+					//If the k+1 is within 0.5 of the gradient
+					//	Assume it is on the same line.
+					//Otherwise
+					//	Point k is the end of the current line, so push back
+					//	Update sk_last = k.
+
+					/*
+					int sk_step = sk_last - 1;
+
+					while( sk_step >= 0) {
+						double skm = ( (double)(path[skc].y - path[skc].y) ) / ( (double)(path[skc-1].x - path[skc].x) );
+
+						for(int skc = sk_last; skc > sk_step; skc--) {
+							double skm = ( (double)(path[skc-1].y - path[skc].y) ) / ( (double)(path[skc-1].x - path[skc].x) );
+
+						}
+					}
+					*/
+				}
 			}
+
 		} else {
 			ROS_ERROR("[Breadcrumb] No possible solution found!");
 		}

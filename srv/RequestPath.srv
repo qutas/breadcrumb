@@ -20,3 +20,4 @@ geometry_msgs/Point end
 ---
 
 geometry_msgs/PoseArray path
+geometry_msgs/PoseArray path_sparse
