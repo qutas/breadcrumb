@@ -4,6 +4,7 @@
 		<param name="search_heuristic" value="1" type="int" />
 		<param name="allow_diagonals" value="true" type="bool" />
 		<param name="obstacle_threshold" value="50" type="int" />
+		<param name="calc_sparse_path" value="true" type="bool"/>
 
 		<!--remap from="grid" to="grid" /-->
 	</node>
