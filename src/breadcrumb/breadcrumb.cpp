@@ -16,13 +16,14 @@ Breadcrumb::Breadcrumb() :
 	nh_(),
 	nhp_("~"),
 	flag_got_grid_(false),
+	param_calc_sparse_(false),
 	dyncfg_settings_(nhp_) {
 
 	dyncfg_settings_.setCallback(boost::bind(&Breadcrumb::callback_cfg_settings, this, _1, _2));
 
 	sub_grid_ = nh_.subscribe<nav_msgs::OccupancyGrid>( "grid", 10, &Breadcrumb::callback_grid, this );
 
-	ROS_INFO("[Breadcrumb] Waiting for path");
+	ROS_INFO("[Breadcrumb] Waiting for occupancy grid");
 }
 
 Breadcrumb::~Breadcrumb() {
@@ -116,30 +117,37 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 
 				ROS_DEBUG("[Breadcrumb] Path: %d, %d", path[k].x, path[k].y);
 
+				//Only calculate if we should, and we're testing a final pass
+				if( param_calc_sparse_ ) {
+					if( (k > 0) && (k < sk_last) ) {
+						//Calculate the angle from the last sparse step (sk_last) to k.
+						double dx = path[k].x - path[sk_last].x;
+						double dy = path[k].y - path[sk_last].y;
+						double sang = std::atan2( dy, dx );
+						double dxn = path[k-1].x - path[sk_last].x;
+						double dyn = path[k-1].y - path[sk_last].y;
+						double sangn = std::atan2( dyn, dxn );
+						ROS_DEBUG("[Breadcrumb] sparse [a,an]: [%0.2f;%0.2f]", sang, sangn);
 
-				if( param_calc_sparse_ && (sk_last > 0) ) {
-					//Calculate the gradient from the last sparse step (sk_last) to k.
-					double skm = ( (double)(path[k].y - path[sk_last].y) ) / ( (double)(path[k].x - path[sk_last].x) );
-
-					//If the k+1 is within 0.5 of the gradient
-					//	Assume it is on the same line.
-					//Otherwise
-					//	Point k is the end of the current line, so push back
-					//	Update sk_last = k.
-
-					/*
-					int sk_step = sk_last - 1;
-
-					while( sk_step >= 0) {
-						double skm = ( (double)(path[skc].y - path[skc].y) ) / ( (double)(path[skc-1].x - path[skc].x) );
-
-						for(int skc = sk_last; skc > sk_step; skc--) {
-							double skm = ( (double)(path[skc-1].y - path[skc].y) ) / ( (double)(path[skc-1].x - path[skc].x) );
-
+						//If the angles aren't the same (give or take a bit)
+						if( fabs(sangn - sang) > 0.001 ) {
+							//Then point k is the end of the line
+							res.path_sparse.poses.push_back( res.path.poses.back() );
+							sk_last = k;
+							ROS_DEBUG("[Breadcrumb] sparse end");
 						}
+					} else if(k == (path.size()-1) ) {
+						//Then this is the initial point, so create the start
+						res.path_sparse.poses.push_back( res.path.poses.back() );
+					} else if(k == 0) {
+						//Then this is the final point, so create the end
+						res.path_sparse.poses.push_back( res.path.poses.back() );
 					}
-					*/
 				}
+			}
+
+			if( param_calc_sparse_ ) {
+				ROS_INFO("[Breadcrumb] Sparse solution reduced %d points to %d", (int)res.path.poses.size(), (int)res.path_sparse.poses.size() );
 			}
 
 		} else {
