@@ -59,6 +59,9 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 	res.path.header.frame_id = frame_id_;
 	res.path.header.stamp = ros::Time::now();
 
+	if( param_calc_sparse_ )
+		res.path_sparse.header = res.path.header;
+
 	int start_i = (int)( (req.start.x - map_info_.origin.position.x) / map_info_.resolution);
 	int start_j = (int)( (req.start.y - map_info_.origin.position.y) / map_info_.resolution);
 	int end_i = (int)( (req.end.x - map_info_.origin.position.x) / map_info_.resolution);
