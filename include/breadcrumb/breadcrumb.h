@@ -15,7 +15,6 @@
 
 class Breadcrumb {
 	private:
-		ros::NodeHandle nh_;
 		ros::NodeHandle nhp_;
 
 		ros::Subscriber sub_grid_;

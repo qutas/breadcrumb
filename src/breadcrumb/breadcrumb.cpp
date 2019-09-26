@@ -13,7 +13,6 @@
 #include <math.h>
 
 Breadcrumb::Breadcrumb() :
-	nh_(),
 	nhp_("~"),
 	flag_got_grid_(false),
 	param_calc_sparse_(false),
@@ -21,7 +20,7 @@ Breadcrumb::Breadcrumb() :
 
 	dyncfg_settings_.setCallback(boost::bind(&Breadcrumb::callback_cfg_settings, this, _1, _2));
 
-	sub_grid_ = nh_.subscribe<nav_msgs::OccupancyGrid>( "grid", 10, &Breadcrumb::callback_grid, this );
+	sub_grid_ = nhp_.subscribe<nav_msgs::OccupancyGrid>( "grid", 10, &Breadcrumb::callback_grid, this );
 
 	ROS_INFO("[Breadcrumb] Waiting for occupancy grid");
 }
