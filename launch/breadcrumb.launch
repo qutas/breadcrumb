@@ -6,6 +6,6 @@
 		<param name="obstacle_threshold" value="50" type="int" />
 		<param name="calc_sparse_path" value="true" type="bool"/>
 
-		<!--remap from="grid" to="grid" /-->
+		<!--remap from="~grid" to="/grid" /-->
 	</node>
 </launch>
