@@ -22,6 +22,25 @@ source ~/catkin_ws/devel/setup.bash
 ## Usage
 This node listens for an OccupancyGrid and will advertise a service which can be called to do path planning within this grid space.
 
+#### Running Breadcrumb
+First, copy the launch file and open it to edit:
+```sh
+mkdir -p ~/catkin_ws/launch
+cd ~/catkin_ws/launch
+roscp breadcrumb breadcrumb.launch ./
+nano breadcrumb.launch
+```
+At this point, you will have to uncomment the grid remap command to tell breadcrumb which occupancy grid to connect to:
+```xml
+<remap from="~grid" to="/grid" />
+```
+
+You can now run breadcrumb:
+```sh
+roslaunch ~/catkin_ws/breadcrumb.launch
+```
+If breadcrumb stops with the message `[Breadcrumb] Waiting for occupancy grid`, then it is waiting to recieve the grid. You will recieve the message `[Breadcrumb] Received a new occupancy grid, path planning service started!` when breadcrumb has successfully received the occupancy grid and is ready for operation.
+
 #### Provided Services
 - Request Path
   - Topic: `~request_path`
