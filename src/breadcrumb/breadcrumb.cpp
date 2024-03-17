@@ -151,12 +151,22 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 			if( param_calc_sparse_ ) {
 				ROS_INFO("[Breadcrumb] Sparse solution reduced %d points to %d", (int)res.path.poses.size(), (int)res.path_sparse.poses.size() );
 			}
-
 		} else {
 			ROS_ERROR("[Breadcrumb] No possible solution found!");
 		}
 	} else if(path.size() == 1) {
-		ROS_WARN("[Breadcrumb] 1-step path detected, no planning required!");
+		ROS_INFO("[Breadcrumb] 1-step path detected, no planning required!");
+		geometry_msgs::Pose start;
+		geometry_msgs::Pose finish;
+		start.position = req.start;
+		start.orientation.w = 1;
+		finish.position = req.end;
+		finish.orientation.w = 1;
+
+		res.path.poses.push_back(start);
+		res.path.poses.push_back(finish);
+		res.path_sparse.poses.push_back(start);
+		res.path_sparse.poses.push_back(finish);
 	} else {
 		ROS_ERROR("[Breadcrumb] Path finding failed to run!");
 	}
