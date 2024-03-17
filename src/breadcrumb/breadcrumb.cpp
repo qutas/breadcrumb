@@ -185,7 +185,6 @@ void Breadcrumb::callback_grid(const nav_msgs::OccupancyGrid::ConstPtr& msg_in) 
 	if(!flag_got_grid_) {
 		flag_got_grid_ = true;
 		srv_request_path_ = nhp_.advertiseService("request_path", &Breadcrumb::request_path, this);
+		ROS_INFO("[Breadcrumb] Received a new occupancy grid, path planning service started!");
 	}
-
-	ROS_INFO("[Breadcrumb] Received a new occupancy grid, path planning service started!");
 }
