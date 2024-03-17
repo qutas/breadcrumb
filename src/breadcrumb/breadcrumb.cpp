@@ -86,7 +86,7 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 			( path[0].x == end_i ) &&
 			( path[0].y == end_j ) ) {
 
-			ROS_INFO("[Breadcrumb] Solution found!");
+			ROS_DEBUG("[Breadcrumb] Solution found!");
 
 			int sk_last = path.size()-1;
 
@@ -149,13 +149,13 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 			}
 
 			if( param_calc_sparse_ ) {
-				ROS_INFO("[Breadcrumb] Sparse solution reduced %d points to %d", (int)res.path.poses.size(), (int)res.path_sparse.poses.size() );
+				ROS_DEBUG("[Breadcrumb] Sparse solution reduced %d points to %d", (int)res.path.poses.size(), (int)res.path_sparse.poses.size() );
 			}
 		} else {
 			ROS_ERROR("[Breadcrumb] No possible solution found!");
 		}
 	} else if(path.size() == 1) {
-		ROS_INFO("[Breadcrumb] 1-step path detected, no planning required!");
+		ROS_DEBUG("[Breadcrumb] 1-step path detected, no planning required!");
 		geometry_msgs::Pose start;
 		geometry_msgs::Pose finish;
 		start.position = req.start;
