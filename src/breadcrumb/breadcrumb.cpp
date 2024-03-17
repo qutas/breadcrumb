@@ -70,15 +70,21 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 
 	std::vector<AStar::Vec2i> path;
 
-	if( ( start_i >= 0 ) && ( start_i < map_info_.width ) &&
-		( start_j >= 0 ) && ( start_j < map_info_.height ) &&
-		( end_i >= 0 ) && ( end_i < map_info_.width ) &&
-		( end_j >= 0 ) && ( end_j < map_info_.height ) ) {
-
-		path = astar_.findPath({start_i, start_j}, {end_i, end_j});
-	} else {
+	if( ( start_i < 0 ) || ( start_i >= map_info_.width ) ||
+		( start_j < 0 ) || ( start_j >= map_info_.height ) ||
+		( end_i < 0 ) || ( end_i >= map_info_.width ) ||
+		( end_j < 0 ) || ( end_j >= map_info_.height ) ) {
 		ROS_ERROR("[Breadcrumb] Requested start/end out of bounds");
+
+		return true;
 	}
+
+	if(astar_.detectCollision({end_i, end_j})) {
+		ROS_ERROR("[Breadcrumb] Requested end is within a obstacle");
+		return true;
+	}
+
+	path = astar_.findPath({start_i, start_j}, {end_i, end_j});
 
 	if(path.size() > 1) {
 		if( ( path[path.size() - 1].x == start_i ) &&

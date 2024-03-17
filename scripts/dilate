@@ -9,7 +9,7 @@ import numpy as np
 
 class Dilate():
     def __init__(self) -> None:
-        self._dilation_size = 1
+        self._dilation_size = 3
         self._threshold = 50
 
         self._morph_element = cv2.getStructuringElement(
