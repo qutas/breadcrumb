@@ -117,6 +117,7 @@ AStar::CoordinateList AStar::Generator::findPath(Vec2i source_, Vec2i target_)
             //XXX: if s' \E open then
             //XXX: current: s
             //XXX: successor: s'
+            //XXX: http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter16_Theta_Star_for_Any-Angle_Pathfinding.pdf
 
             uint totalCost = current->G + ((i < 4) ? 10 : 14);
 
