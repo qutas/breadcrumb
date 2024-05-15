@@ -31,7 +31,9 @@ Breadcrumb::~Breadcrumb() {
 void Breadcrumb::callback_cfg_settings( breadcrumb::AStarParamsConfig &config, uint32_t level ) {
 	param_obstacle_threshold_ = config.obstacle_threshold;
 	param_calc_sparse_ = config.calc_sparse_path;
+	param_theta_star_ = config.any_angle;
 
+	astar_.setThetaStar(param_theta_star_);
 	astar_.setDiagonalMovement(config.allow_diagonals);
 
 	switch(config.search_heuristic) {
@@ -104,7 +106,7 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 				step.position.y = (path[k].y * map_info_.resolution) + (map_info_.resolution / 2) + map_info_.origin.position.y;
 				step.position.z = req.start.z;
 
-				//Fill in thet rotation data
+				//Fill in the rotation data
 				if(k > 0) {
 					double yaw = atan2(path[k-1].y - path[k].y, path[k-1].x - path[k].x);
 
@@ -126,7 +128,7 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 				ROS_DEBUG("[Breadcrumb] Path: %d, %d", path[k].x, path[k].y);
 
 				//Only calculate if we should, and we're testing a final pass
-				if( param_calc_sparse_ ) {
+				if( param_calc_sparse_ && !param_theta_star_ ) {
 					if( (k > 0) && (k < sk_last) ) {
 						//Calculate the angle from the last sparse step (sk_last) to k.
 						double dx = path[k].x - path[sk_last].x;

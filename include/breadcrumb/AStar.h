@@ -17,6 +17,7 @@ namespace AStar
         int x, y;
 
         bool operator == (const Vec2i& coordinates_);
+        uint distance(const Vec2i& other_);
     };
 
     using uint = unsigned int;
@@ -39,6 +40,7 @@ namespace AStar
     {
         Node* findNodeOnList(NodeSet& nodes_, Vec2i coordinates_);
         void releaseNodes(NodeSet& nodes_);
+        bool lineOfSight(Node* current, Node* successor);
 
     public:
         Generator();
@@ -50,12 +52,14 @@ namespace AStar
         void addCollision(Vec2i coordinates_);
         void removeCollision(Vec2i coordinates_);
         void clearCollisions();
+        void setThetaStar(bool enable_);
 
     private:
         HeuristicFunction heuristic;
         CoordinateList direction, walls;
         Vec2i worldSize;
         uint directions;
+        bool use_theta_star;
     };
 
     class Heuristic

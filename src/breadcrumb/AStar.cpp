@@ -14,6 +14,17 @@ AStar::Vec2i operator + (const AStar::Vec2i& left_, const AStar::Vec2i& right_)
     return{ left_.x + right_.x, left_.y + right_.y };
 }
 
+AStar::Vec2i operator - (const AStar::Vec2i& left_, const AStar::Vec2i& right_)
+{
+    return{ left_.x - right_.x, left_.y - right_.y };
+}
+
+uint AStar::Vec2i::distance(const Vec2i& other_)
+{
+    auto delta = std::move(*this - other_);
+    return sqrt(delta.x * delta.x + delta.y * delta.y);
+}
+
 AStar::Node::Node(Vec2i coordinates_, Node *parent_)
 {
     parent = parent_;
@@ -28,6 +39,7 @@ AStar::uint AStar::Node::getScore()
 
 AStar::Generator::Generator()
 {
+    setThetaStar(false);
     setDiagonalMovement(false);
     setHeuristic(&Heuristic::manhattan);
     direction = {
@@ -49,6 +61,11 @@ void AStar::Generator::setDiagonalMovement(bool enable_)
 void AStar::Generator::setHeuristic(HeuristicFunction heuristic_)
 {
     heuristic = std::bind(heuristic_, _1, _2);
+}
+
+void AStar::Generator::setThetaStar(bool enable_)
+{
+    use_theta_star = enable_;
 }
 
 void AStar::Generator::addCollision(Vec2i coordinates_)
@@ -97,6 +114,10 @@ AStar::CoordinateList AStar::Generator::findPath(Vec2i source_, Vec2i target_)
                 continue;
             }
 
+            //XXX: if s' \E open then
+            //XXX: current: s
+            //XXX: successor: s'
+
             uint totalCost = current->G + ((i < 4) ? 10 : 14);
 
             Node *successor = findNodeOnList(openSet, newCoordinates);
@@ -105,6 +126,13 @@ AStar::CoordinateList AStar::Generator::findPath(Vec2i source_, Vec2i target_)
                 successor->G = totalCost;
                 successor->H = heuristic(successor->coordinates, target_);
                 openSet.insert(successor);
+            }
+            else if (use_theta_star && lineOfSight(current->parent, successor)) {
+                uint los_cost = current->parent->G + current->parent->coordinates.distance(successor->coordinates);
+                if (los_cost < successor->G) {
+                    successor->parent = current->parent;
+                    successor->G = los_cost;
+                }
             }
             else if (totalCost < successor->G) {
                 successor->parent = current;
@@ -123,6 +151,42 @@ AStar::CoordinateList AStar::Generator::findPath(Vec2i source_, Vec2i target_)
     releaseNodes(closedSet);
 
     return path;
+}
+
+bool AStar::Generator::lineOfSight(Node* current, Node* successor) {
+    //https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+    int x0 = current->coordinates.x;
+    int y0 = current->coordinates.y;
+    const int x1 = successor->coordinates.x;
+    const int y1 = successor->coordinates.y;
+
+    const int dx = abs(x1 - x0);
+    const int sx = x0 < x1 ? 1 : -1;
+    const int dy = -abs(y1 - y0);
+    const int sy = y0 < y1 ? 1 : -1;
+    int error = dx + dy;
+
+    while(true) {
+        if (detectCollision({x0, y0})) return false;
+
+        if (x0 == x1 && y0 == y1) break;
+
+        const int e2 = 2 * error;
+
+        if(e2 >= dy) {
+            if (x0 == x1) break;
+            error = error + dy;
+            x0 = x0 + sx;
+        }
+
+        if(e2 <= dx) {
+            if (y0 == y1) break;
+            error = error + dx;
+            y0 = y0 + sy;
+        }
+    }
+
+    return true;
 }
 
 AStar::Node* AStar::Generator::findNodeOnList(NodeSet& nodes_, Vec2i coordinates_)
