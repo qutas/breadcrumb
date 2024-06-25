@@ -10,6 +10,8 @@
 #include <functional>
 #include <set>
 #include <stdint.h>
+#include <map>
+#include <string_view>
 
 namespace Breadcrumb {
 
@@ -61,11 +63,14 @@ namespace AStar {
         void setWorldSize(Vec2i worldSize_);
         void setDiagonalMovement(bool enable_);
         void setHeuristic(HeuristicFunction heuristic_);
+        bool setHeuristicByName(std::string_view method);
         CoordinateList findPath(Vec2i source_, Vec2i target_);
         void addCollision(Vec2i coordinates_);
         void removeCollision(Vec2i coordinates_);
         void clearCollisions();
         void setThetaStar(bool enable_);
+        bool usingThetaStar() const;
+
 
         NodeCost computeCost(const Node* current, Node* successor, const uint c) const;
         uint getStraightLineCost(uint step) const;
@@ -86,6 +91,13 @@ namespace AStar {
         static uint manhattan(Vec2i source_, Vec2i target_);
         static uint euclidean(Vec2i source_, Vec2i target_);
         static uint octagonal(Vec2i source_, Vec2i target_);
+
+    };
+
+    const std::map<std::string_view, AStar::HeuristicFunction> heuristic_methods {
+        {"manhattan", AStar::Heuristic::manhattan},
+        {"euclidean", AStar::Heuristic::euclidean},
+        {"octagonal", AStar::Heuristic::octagonal},
     };
 }
 

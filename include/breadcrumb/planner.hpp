@@ -3,8 +3,6 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-// #include <dynamic_reconfigure/server.h>
-
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/map_meta_data.hpp>
 
@@ -28,25 +26,19 @@ class Planner : public rclcpp::Node {
 		std::string frame_id_;
 		AStar::Generator astar_;
 
-		std::string param_heuristic_;
-		int param_obstacle_threshold_;
 		bool param_calc_sparse_;
-		bool param_theta_star_;
-		bool param_allow_diagonals_;
+		int64_t param_obstacle_threshold_;
 		
 
 	public:
 		Planner();
 
 	private:
-		// void callback_cfg_settings( breadcrumb::AStarParamsConfig &config, uint32_t level );
-
 		void callback_grid(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg_in);
 
 		bool request_path(const breadcrumb_interfaces::srv::RequestPath::Request::ConstSharedPtr req, breadcrumb_interfaces::srv::RequestPath::Response::SharedPtr res);
 
 		rcl_interfaces::msg::SetParametersResult callback_parameters(const std::vector<rclcpp::Parameter> &parameters);
-		bool update_a_star_heuristic(std::string_view method);
 };
 
 }

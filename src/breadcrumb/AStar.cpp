@@ -6,6 +6,9 @@
 using namespace std::placeholders;
 namespace Breadcrumb {
 
+namespace {
+}
+
 bool AStar::Vec2i::operator == (const Vec2i& coordinates_) const
 {
     return (x == coordinates_.x && y == coordinates_.y);
@@ -70,9 +73,25 @@ void AStar::Generator::setHeuristic(HeuristicFunction heuristic_)
     heuristic = std::bind(heuristic_, _1, _2);
 }
 
+bool AStar::Generator::setHeuristicByName(std::string_view method)
+{
+    const auto key = AStar::heuristic_methods.find(method);
+    if(key == AStar::heuristic_methods.end()) {
+        return false;
+    }
+
+    setHeuristic(key->second);
+	return true;
+}
+
 void AStar::Generator::setThetaStar(bool enable_)
 {
     use_theta_star = enable_;
+}
+
+bool AStar::Generator::usingThetaStar() const
+{
+    return use_theta_star;
 }
 
 void AStar::Generator::addCollision(Vec2i coordinates_)
