@@ -1,9 +1,10 @@
-#include <breadcrumb/AStar.h>
+#include <breadcrumb/AStar.hpp>
 #include <algorithm>
 #include <limits>
 #include <math.h>
 
 using namespace std::placeholders;
+namespace Breadcrumb {
 
 bool AStar::Vec2i::operator == (const Vec2i& coordinates_) const
 {
@@ -20,7 +21,7 @@ AStar::Vec2i operator - (const AStar::Vec2i& left_, const AStar::Vec2i& right_)
     return{ left_.x - right_.x, left_.y - right_.y };
 }
 
-uint AStar::Vec2i::distance(const Vec2i& other_) const
+AStar::uint AStar::Vec2i::distance(const Vec2i& other_) const
 {
     auto delta = std::move(*this - other_);
     return sqrt(delta.x * delta.x + delta.y * delta.y);
@@ -50,7 +51,7 @@ AStar::Generator::Generator()
     };
 }
 
-uint AStar::Generator::getStraightLineCost(uint step) const {
+AStar::uint AStar::Generator::getStraightLineCost(uint step) const {
     return ((step < 4) ? 10 : 14);
 }
 
@@ -307,4 +308,6 @@ AStar::uint AStar::Heuristic::octagonal(Vec2i source_, Vec2i target_)
 {
     auto delta = std::move(getDelta(source_, target_));
     return 10 * (delta.x + delta.y) + (-6) * std::min(delta.x, delta.y);
+}
+
 }

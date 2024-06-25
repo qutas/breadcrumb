@@ -9,18 +9,21 @@
 #include <vector>
 #include <functional>
 #include <set>
+#include <stdint.h>
 
-namespace AStar
-{
+namespace Breadcrumb {
+
+namespace AStar {
+    using uint = uint64_t;
+
     struct Vec2i
     {
-        int x, y;
+        int64_t x, y;
 
         bool operator == (const Vec2i& coordinates_) const;
         uint distance(const Vec2i& other_) const;
     };
 
-    using uint = unsigned int;
     using HeuristicFunction = std::function<uint(Vec2i, Vec2i)>;
     using CoordinateList = std::vector<Vec2i>;
 
@@ -84,6 +87,8 @@ namespace AStar
         static uint euclidean(Vec2i source_, Vec2i target_);
         static uint octagonal(Vec2i source_, Vec2i target_);
     };
+}
+
 }
 
 #endif // __ASTAR_HPP_8F637DB91972F6C878D41D63F7E7214F__

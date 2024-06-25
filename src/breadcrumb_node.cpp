@@ -1,11 +1,12 @@
-#include <ros/ros.h>
-#include <breadcrumb/breadcrumb.h>
+#include <memory>
+#include <rclcpp/rclcpp.hpp>
 
-int main(int argc, char** argv) {
-	ros::init(argc, argv, "breadcrumb");
-	Breadcrumb bc;
+#include <breadcrumb/planner.hpp>
 
-	ros::spin();
-
-	return 0;
+int main(int argc, char * argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<Breadcrumb::Planner>());
+  rclcpp::shutdown();
+  return 0;
 }
