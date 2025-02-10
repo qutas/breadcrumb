@@ -49,9 +49,8 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
-file(GLOB ${PROJECT_NAME}_scripts ${PROJECT_SOURCE_DIR}/scripts/*)
 install(PROGRAMS
-  ${${PROJECT_NAME}_scripts}
+  ${PROJECT_SOURCE_DIR}/scripts/dilate
   DESTINATION lib/${PROJECT_NAME}
 )
 
