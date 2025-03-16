@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+
+<launch>
+	<!-- Global flags -->
+	<arg name="map_file" default="$(find breadcrumb)/launch/O_block_finalV6.bt"/>
+	<arg name="frame_id" default="world"/>
+
+	<!-- launch octomap server with map in real testing only -->
+	<node type="octomap_server_node" name="octomap_server" pkg="octomap_server" args="$(arg map_file) _frame_id:=$(arg frame_id)" />
+	
+    <!-- ADDING TRANSFORM BETWEEN map and world to visualize odom in world frame (for path visualization)-->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_world" args="0 0 0 0 0 0 map world" />  
+    
+
+	
+
+	
+</launch>
