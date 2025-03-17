@@ -32,6 +32,7 @@ class Breadcrumb {
 		bool flag_got_grid_;
 		int param_obstacle_threshold_;
 		bool param_calc_sparse_;
+		int param_sparse_max_;
 		bool param_theta_star_;
 		int param_obstacle_buffer_;
 

@@ -31,8 +31,10 @@ Breadcrumb::~Breadcrumb() {
 void Breadcrumb::callback_cfg_settings( breadcrumb::AStarParamsConfig &config, uint32_t level ) {
 	param_obstacle_threshold_ = config.obstacle_threshold;
 	param_calc_sparse_ = config.calc_sparse_path;
+	param_sparse_max_ = config.sparse_max;
 	param_theta_star_ = config.any_angle;
 	param_obstacle_buffer_ = config.obstacle_buffer;
+	
 
 	astar_.setThetaStar(param_theta_star_);
 	astar_.setDiagonalMovement(config.allow_diagonals);
@@ -140,8 +142,8 @@ bool Breadcrumb::request_path(breadcrumb::RequestPath::Request& req, breadcrumb:
 						double sangn = std::atan2( dyn, dxn );
 						ROS_DEBUG("[Breadcrumb] sparse [a,an]: [%0.2f;%0.2f]", sang, sangn);
 
-						//If the angles aren't the same (give or take a bit)
-						if( fabs(sangn - sang) > 0.001 ) {
+						//If the angles aren't the same (give or take a bit) or sk_last far enougth from K.
+						if( fabs(sangn - sang) > 0.001 || (sk_last - param_sparse_max_) > k) {
 							//Then point k is the end of the line
 							res.path_sparse.poses.push_back( res.path.poses.back() );
 							sk_last = k;
