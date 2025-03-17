@@ -32,6 +32,7 @@ void Breadcrumb::callback_cfg_settings( breadcrumb::AStarParamsConfig &config, u
 	param_obstacle_threshold_ = config.obstacle_threshold;
 	param_calc_sparse_ = config.calc_sparse_path;
 	param_theta_star_ = config.any_angle;
+	param_obstacle_buffer_ = config.obstacle_buffer;
 
 	astar_.setThetaStar(param_theta_star_);
 	astar_.setDiagonalMovement(config.allow_diagonals);
@@ -195,8 +196,19 @@ void Breadcrumb::callback_grid(const nav_msgs::OccupancyGrid::ConstPtr& msg_in) 
 	for(int j=0; j<msg_in->info.height; j++) {
 		for(int i=0; i<msg_in->info.width; i++) {
 			//If the obstacle is above the acceptable threshold, add it as an obstacle
-			if(msg_in->data[i + (j*msg_in->info.width)] > param_obstacle_threshold_)
+			if(msg_in->data[i + (j*msg_in->info.width)] > param_obstacle_threshold_){
 				astar_.addCollision({i,j});
+				// Add surrounding cells as collisions to enforce clearance
+				for(int y = -param_obstacle_buffer_; y <= param_obstacle_buffer_; y++){
+					for(int x = -param_obstacle_buffer_; x <= param_obstacle_buffer_; x++){
+						int nx = i + x;
+						int ny = j + y;
+						if(nx >= 0 && nx < msg_in->info.width && ny >= 0 && ny < msg_in->info.height){
+							astar_.addCollision({nx, ny});
+						}
+					}
+				}
+			}
 		}
 	}
 

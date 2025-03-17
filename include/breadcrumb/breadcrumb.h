@@ -33,6 +33,7 @@ class Breadcrumb {
 		int param_obstacle_threshold_;
 		bool param_calc_sparse_;
 		bool param_theta_star_;
+		int param_obstacle_buffer_;
 
 	public:
 		Breadcrumb( void );
