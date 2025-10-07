@@ -54,7 +54,7 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-ament_auto_package(CONFIG_EXTRAS) # ConfigExtras.cmake)
+ament_auto_package(USE_SCOPED_HEADER_INSTALL_DIR CONFIG_EXTRAS) # ConfigExtras.cmake)
 
 
 #############
